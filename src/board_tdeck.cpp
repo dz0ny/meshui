@@ -167,26 +167,43 @@ void init() {
 
 // ---------- Battery (ADC-based) ----------
 
-// ADC multiplier 2.11 — Meshtastic uses this to correct for voltage divider
-// tolerance (nominal 2.0 from 100k/100k, but real-world ~2.11).
-static constexpr float ADC_MULTIPLIER = 2.11f;
+static constexpr uint8_t BATTERY_SAMPLE_COUNT = 8;
+static constexpr uint8_t ADC_MULTIPLIER = 2;
+static constexpr uint16_t BATTERY_EMPTY_MV = 3300;
+static constexpr uint16_t BATTERY_FULL_MV = 4200;
 
 static int read_battery_mv() {
     analogSetPinAttenuation(TDECK_BAT_ADC, ADC_11db);
-    int mv = analogReadMilliVolts(TDECK_BAT_ADC);
-    if (mv <= 0) return 0;
-    return (int)(mv * ADC_MULTIPLIER);
+    uint32_t total = 0;
+    uint8_t samples = 0;
+    for (uint8_t i = 0; i < BATTERY_SAMPLE_COUNT; i++) {
+        int mv = analogReadMilliVolts(TDECK_BAT_ADC);
+        if (mv > 0) {
+            total += (uint32_t)mv;
+            samples++;
+        }
+    }
+    if (samples == 0) return 0;
+    return (int)((total / samples) * ADC_MULTIPLIER);
 }
 
 static uint16_t mv_to_percent(int mv) {
     if (mv <= 0) return 0;
-    int pct = (int)(((mv - 3300) / 900.0f) * 100.0f);
+    int pct = ((mv - BATTERY_EMPTY_MV) * 100) / (BATTERY_FULL_MV - BATTERY_EMPTY_MV);
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     return (uint16_t)pct;
 }
 
-bool battery_is_charging() { return false; }  // no charger IC to query
+static bool usb_powered() {
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE
+    return Serial.isPlugged();
+#else
+    return false;
+#endif
+}
+
+bool battery_is_charging() { return usb_powered(); }
 
 uint16_t battery_percent() {
     return mv_to_percent(read_battery_mv());
@@ -205,7 +222,7 @@ uint16_t battery_health() { return 0; }
 
 // Charger stubs (no BQ25896)
 bool     charger_is_valid() { return false; }
-bool     charger_vbus_in() { return false; }
+bool     charger_vbus_in() { return usb_powered(); }
 const char* charger_status_str() { return "N/A"; }
 const char* charger_bus_status_str() { return "N/A"; }
 const char* charger_ntc_status_str() { return "N/A"; }

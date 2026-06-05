@@ -35,6 +35,7 @@ bool set(theme_id id);
 theme_id next();
 const char* current_name();
 const palette_t& colors();
+void style_scrollbar_hint(lv_obj_t* obj);
 
 // Shared styles — applied via lv_obj_add_style() to reduce per-widget local style allocations.
 // Re-initialized on theme change; must be applied before widget creation so new widgets pick up

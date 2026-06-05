@@ -136,4 +136,17 @@ const palette_t& colors() {
     return palettes[static_cast<uint8_t>(current_theme)];
 }
 
+void style_scrollbar_hint(lv_obj_t* obj) {
+#ifdef BOARD_TDECK
+    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_style_width(obj, 4, LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(EPD_COLOR_FOCUS), LV_PART_SCROLLBAR);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_SCROLLBAR);
+    lv_obj_set_style_border_width(obj, 0, LV_PART_SCROLLBAR);
+    lv_obj_set_style_radius(obj, 2, LV_PART_SCROLLBAR);
+#else
+    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
+#endif
+}
+
 } // namespace ui::theme

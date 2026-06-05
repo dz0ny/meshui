@@ -451,7 +451,7 @@ lv_obj_t* scroll_list(lv_obj_t* parent) {
     lv_obj_set_size(list, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_opa(list, LV_OPA_0, LV_PART_MAIN);
     lv_obj_set_style_border_width(list, 0, LV_PART_MAIN);
-    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+    ui::theme::style_scrollbar_hint(list);
     lv_obj_set_style_pad_all(list, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_row(list, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_gap(list, 0, LV_PART_MAIN);

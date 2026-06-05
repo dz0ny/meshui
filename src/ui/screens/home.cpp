@@ -91,7 +91,7 @@ static void create(lv_obj_t* parent) {
 #if UI_HOME_MENU_SCROLL
     lv_obj_set_size(menu, lv_pct(95), SCREEN_HEIGHT - HOME_MENU_Y - HOME_MENU_TOP_INSET - HOME_MENU_BOTTOM_INSET);
     lv_obj_align(menu, LV_ALIGN_TOP_MID, 0, HOME_MENU_Y + HOME_MENU_TOP_INSET);
-    lv_obj_set_scrollbar_mode(menu, LV_SCROLLBAR_MODE_OFF);
+    ui::theme::style_scrollbar_hint(menu);
     lv_obj_clear_flag(menu, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM));
 #else
     lv_obj_set_size(menu, lv_pct(90), LV_SIZE_CONTENT);

@@ -2,3 +2,4 @@
 .vscode
 .cachebro
 compile_commands.json
+__pycache__/

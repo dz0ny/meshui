@@ -61,6 +61,7 @@ static lv_obj_t* section_header(lv_obj_t* parent, const char* text) {
 static void on_back(lv_event_t* e) { ui::screen_mgr::pop(true); }
 
 static void update_cb(lv_timer_t* t) {
+    model::update_battery();
     auto& b = model::battery;
     lv_label_set_text_fmt(lbl_percent, "%d%%", b.percent);
     lv_label_set_text_fmt(lbl_voltage, "%d mV", b.voltage_mv);

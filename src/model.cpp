@@ -339,6 +339,7 @@ void update_gps() {
 
 void update_battery() {
     uint16_t prev_percent = battery.percent;
+    uint16_t prev_voltage_mv = battery.voltage_mv;
     bool prev_charging = battery.charging;
 
     battery.percent = board::battery_percent();
@@ -363,7 +364,7 @@ void update_battery() {
         battery.charge_current_ma = board::charger_current_ma();
     }
 
-    if (battery.percent != prev_percent || battery.charging != prev_charging) {
+    if (battery.percent != prev_percent || battery.voltage_mv != prev_voltage_mv || battery.charging != prev_charging) {
         mark_dirty(DIRTY_BATTERY);
     }
 }

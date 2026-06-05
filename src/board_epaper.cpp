@@ -108,7 +108,7 @@ bool touch_init() {
         home_button_pressed = true;
     }, NULL);
 
-    touch.setInterruptMode(LOW_LEVEL_QUERY);
+    touch.setInterruptMode(TouchDrvGT911::LOW_LEVEL_QUERY);
     return true;
 }
 
@@ -148,17 +148,17 @@ void seed_clock_from_rtc() {
     if (!peri_status[E_PERI_RTC]) return;
     RTC_DateTime dt = rtc.getDateTime();
     Serial.printf("RTC raw: %04d-%02d-%02d %02d:%02d:%02d\n",
-        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
-    if (dt.year >= 2020 && dt.year <= 2099) {
+        dt.getYear(), dt.getMonth(), dt.getDay(), dt.getHour(), dt.getMinute(), dt.getSecond());
+    if (dt.getYear() >= 2020 && dt.getYear() <= 2099) {
         setenv("TZ", "UTC0", 1);
         tzset();
         struct tm t = {};
-        t.tm_year = dt.year - 1900;
-        t.tm_mon  = dt.month - 1;
-        t.tm_mday = dt.day;
-        t.tm_hour = dt.hour;
-        t.tm_min  = dt.minute;
-        t.tm_sec  = dt.second;
+        t.tm_year = dt.getYear() - 1900;
+        t.tm_mon  = dt.getMonth() - 1;
+        t.tm_mday = dt.getDay();
+        t.tm_hour = dt.getHour();
+        t.tm_min  = dt.getMinute();
+        t.tm_sec  = dt.getSecond();
         t.tm_isdst = 0;
         time_t epoch = mktime(&t);
         struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
@@ -295,16 +295,16 @@ uint32_t gps_satellites() {
 
 void rtc_get_time(uint8_t* h, uint8_t* m, uint8_t* s) {
     RTC_DateTime dt = rtc.getDateTime();
-    *h = dt.hour;
-    *m = dt.minute;
-    *s = dt.second;
+    *h = dt.getHour();
+    *m = dt.getMinute();
+    *s = dt.getSecond();
 }
 
 void rtc_get_date(uint8_t* year, uint8_t* month, uint8_t* day, uint8_t* week) {
     RTC_DateTime dt = rtc.getDateTime();
-    if (year) *year = dt.year % 100;
-    if (month) *month = dt.month;
-    if (day) *day = dt.day;
+    if (year) *year = dt.getYear() % 100;
+    if (month) *month = dt.getMonth();
+    if (day) *day = dt.getDay();
     if (week) *week = 0;
 }
 

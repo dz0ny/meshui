@@ -603,7 +603,7 @@ static void create_epaper_picker_panel(lv_obj_t* parent) {
     lv_obj_align(recipient_list, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_opa(recipient_list, LV_OPA_0, LV_PART_MAIN);
     lv_obj_set_style_border_width(recipient_list, 0, LV_PART_MAIN);
-    lv_obj_set_scrollbar_mode(recipient_list, LV_SCROLLBAR_MODE_OFF);
+    ui::theme::style_scrollbar_hint(recipient_list);
     lv_obj_set_style_pad_all(recipient_list, 0, LV_PART_MAIN);
     lv_obj_set_flex_flow(recipient_list, LV_FLEX_FLOW_COLUMN);
     lv_obj_clear_flag(recipient_list, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM));
@@ -765,7 +765,7 @@ static void create(lv_obj_t* parent) {
     lv_obj_align(recipient_list, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_opa(recipient_list, LV_OPA_0, LV_PART_MAIN);
     lv_obj_set_style_border_width(recipient_list, 0, LV_PART_MAIN);
-    lv_obj_set_scrollbar_mode(recipient_list, LV_SCROLLBAR_MODE_OFF);
+    ui::theme::style_scrollbar_hint(recipient_list);
     lv_obj_set_style_pad_all(recipient_list, 0, LV_PART_MAIN);
     lv_obj_set_flex_flow(recipient_list, LV_FLEX_FLOW_COLUMN);
     lv_obj_clear_flag(recipient_list, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM));
