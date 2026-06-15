@@ -301,6 +301,20 @@ void loop() {
         model::ingest_bridge_events();
     }
 
+    // Home is built at boot, *before* the mesh starts, so its "Team" row — which
+    // only appears when a favorited chat contact exists — is missing on the first
+    // paint (contacts aren't loaded yet). mesh::task::start() loads contacts
+    // synchronously, so on the first loop after it ran we refresh and, if we're
+    // still on home and a team now exists, rebuild it in place. Without this the
+    // Team row only showed up after leaving and re-entering home.
+    static bool home_team_synced = false;
+    if (mesh_started && !home_team_synced) {
+        home_team_synced = true;
+        model::refresh_contacts();
+        if (model::team_count() > 0 && ui::screen_mgr::top_id() == SCREEN_HOME)
+            ui::screen_mgr::switch_to(SCREEN_HOME, false);   // rebuild with the Team row
+    }
+
     poll_buttons();
 
     // Battery: the ADC read pulses VBAT_ENABLE + a settle delay, so throttle it
