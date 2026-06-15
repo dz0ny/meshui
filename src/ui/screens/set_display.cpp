@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 #include "../ui_screen_mgr.h"
 #include "../kit/ui_kit.h"
+#include "../kit/ui_kit_mono.h"
 #include "../i18n.h"
 #include "../components/toast.h"
 #include "../../model.h"
@@ -21,7 +22,15 @@ using namespace ui::kit;
 static Handle lbl_lang    = nullptr;
 static Handle lbl_tz      = nullptr;
 static Handle lbl_msgchan = nullptr;
-static Handle lbl_buzzer  = nullptr;
+static Handle lbl_invert  = nullptr;
+
+static void save_invert(bool on) {
+    using namespace Adafruit_LittleFS_Namespace;
+    InternalFS.remove("/invert");
+    uint8_t b = on ? 1 : 0;
+    File f = InternalFS.open("/invert", FILE_O_WRITE);
+    if (f) { f.write(&b, 1); f.close(); }
+}
 
 static void save_language(uint8_t l) {
     using namespace Adafruit_LittleFS_Namespace;
@@ -81,10 +90,11 @@ static void on_msgchan(void*) {
     if (lbl_msgchan) set_text(lbl_msgchan, chans[next].name);
 }
 
-static void on_buzzer(void*) {
-    bool en = !mesh::task::get_buzzer_enabled();
-    mesh::task::set_buzzer_enabled(en);
-    if (lbl_buzzer) set_text(lbl_buzzer, i18n::t(en ? i18n::T_ON : i18n::T_OFF));
+static void on_invert(void*) {
+    bool on = !ui::kit::mono::get_invert();
+    ui::kit::mono::set_invert(on);
+    save_invert(on);
+    if (lbl_invert) set_text(lbl_invert, i18n::t(on ? i18n::T_ON : i18n::T_OFF));
 }
 
 static void on_lang(void*) {
@@ -104,14 +114,14 @@ static void create(Handle parent) {
     char tzb[12]; fmt_tz(tzb, sizeof(tzb), model::clock.tz_offset_hours);
     lbl_tz = toggle_item(lst, i18n::t(i18n::T_TIMEZONE), tzb, on_tz, nullptr);
     lbl_msgchan = toggle_item(lst, i18n::t(i18n::T_MSG_CHANNEL), msgchan_label(), on_msgchan, nullptr);
-    lbl_buzzer = toggle_item(lst, "Buzzer",
-                             i18n::t(mesh::task::get_buzzer_enabled() ? i18n::T_ON : i18n::T_OFF),
-                             on_buzzer, nullptr);
+    lbl_invert = toggle_item(lst, i18n::t(i18n::T_INVERT),
+                             i18n::t(ui::kit::mono::get_invert() ? i18n::T_ON : i18n::T_OFF),
+                             on_invert, nullptr);
 }
 
 static void entry() {}
 static void exit_fn() {}
-static void destroy() { lbl_lang = nullptr; lbl_tz = nullptr; lbl_msgchan = nullptr; lbl_buzzer = nullptr; }
+static void destroy() { lbl_lang = nullptr; lbl_tz = nullptr; lbl_msgchan = nullptr; lbl_invert = nullptr; }
 
 screen_lifecycle_t lifecycle = { create, entry, exit_fn, destroy };
 

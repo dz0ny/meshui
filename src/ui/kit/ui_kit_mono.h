@@ -9,6 +9,14 @@ void reset();                 // drop the current node tree (start a new screen)
 void render();                // layout + draw the tree to the e-ink (paged)
 void redraw();                // force a redraw on next render (e.g. clock ticked)
 
+// Global colour inversion (dark mode). When on, foreground/background swap so
+// the panel paints white-on-black. fg()/bg() return the current GxEPD colours so
+// app-drawn chrome (the status bar) tracks the same scheme.
+void set_invert(bool on);
+bool get_invert();
+uint16_t fg();                // foreground (text/lines) colour for current mode
+uint16_t bg();                // background (fill) colour for current mode
+
 // Fixed top status bar (clock / GPS / battery …). The engine reserves `h` px at
 // the top and calls fn() each render to paint it (fn draws via the display +
 // reads the model); screen content lives/scrolls below it.

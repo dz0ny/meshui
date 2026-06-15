@@ -25,7 +25,7 @@ enum Str : uint16_t {
     T_BATTERY, T_GPS_INFO, T_MESH_INFO,
     // settings menu
     T_DISPLAY, T_BLUETOOTH, T_GPS_SETTINGS, T_MESH_SETTINGS, T_LANGUAGE,
-    T_PRIVACY, T_ADVERT_GPS,
+    T_PRIVACY, T_ADVERT_GPS, T_SOUND, T_BUZZER, T_INVERT,
     // common values
     T_ON, T_OFF, T_OK, T_NONE, T_AUTO,
     // set_gps
@@ -41,7 +41,7 @@ enum Str : uint16_t {
     T_TRACKING, T_TRACKING_STARTED, T_WAITING_GPS_FIX, T_TRACKING_STOPPED,
     T_TRAIL_CLEARED,
     // chat / channels
-    T_NO_MESSAGES, T_MSG_CHANNEL, T_GPS_CHANNEL,
+    T_NO_MESSAGES, T_MSG_CHANNEL, T_GPS_CHANNEL, T_UNREAD,
     // quick replies
     T_REPLY, T_SENT, T_SEND_FAILED, T_NO_GPS_FIX, T_QR_GPS_LOC,
     T_QR_OMW, T_QR_YES, T_QR_NO, T_QR_HELP, T_QR_ARRIVED,
@@ -64,7 +64,7 @@ inline const char* t(Str id) {
         "Messages", "Trail", "Status", "Settings", "Team",
         "Battery", "GPS Info", "Mesh Info",
         "Display", "Bluetooth", "GPS Settings", "Mesh Settings", "Language",
-        "Privacy", "GPS in advert",
+        "Privacy", "GPS in advert", "Sound", "Buzzer", "Invert",
         "On", "Off", "OK", "None", "Auto",
         "GPS", "Module", "RTC Sync",
         "Node", "TX Power", "GPS Share", "Repeat", "Radio", "Stats", "Peers",
@@ -73,7 +73,7 @@ inline const char* t(Str id) {
         "Start", "Stop", "Clear", "No GPS / no trail", "Stopped", "Waiting fix",
         "Tracking", "Tracking started", "Waiting for GPS fix", "Tracking stopped",
         "Trail cleared",
-        "No messages yet", "Channel", "GPS Chan",
+        "No messages yet", "Channel", "GPS Chan", "unread",
         "Reply", "Sent", "Send failed", "No GPS fix", "GPS location",
         "On my way", "Yes", "No", "Need help", "Arrived",
         "Map", "No positions yet", "Move to calibrate",
@@ -84,7 +84,7 @@ inline const char* t(Str id) {
         "Sporocila", "Sled", "Stanje", "Nastavitve", "Ekipa",
         "Baterija", "GPS info", "Mesh info",
         "Zaslon", "Bluetooth", "GPS nastav.", "Mesh nastav.", "Jezik",
-        "Zasebnost", "GPS v oglasu",
+        "Zasebnost", "GPS v oglasu", "Zvok", "Brencalo", "Obrni barve",
         "Vklop", "Izklop", "OK", "Brez", "Samod.",
         "GPS", "Modul", "RTC sinhr.",
         "Vozlisce", "Moc TX", "Deli GPS", "Ponovi", "Radio", "Statistika", "Sosedje",
@@ -93,7 +93,7 @@ inline const char* t(Str id) {
         "Zacni", "Ustavi", "Pocisti", "Ni GPS / sledi", "Ustavljeno", "Cakam fix",
         "Sledim", "Sledenje vklop.", "Cakam GPS fix", "Sledenje ustavljeno",
         "Sled pociscena",
-        "Ni sporocil", "Kanal", "GPS kanal",
+        "Ni sporocil", "Kanal", "GPS kanal", "neprebranih",
         "Odgovori", "Poslano", "Posiljanje ni uspelo", "Ni GPS fix", "GPS lokacija",
         "Ze grem", "Da", "Ne", "Rabim pomoc", "Prispel",
         "Zemljevid", "Ni lokacij", "Premakni za kalib.",

@@ -55,6 +55,12 @@ static Node* g_root = nullptr;
 static Node* g_focus = nullptr;
 static bool  g_dirty = true;     // redraw only when something actually changed
 static int   g_scroll = 0;       // vertical scroll offset (px) for tall screens
+static bool  g_invert = false;   // dark mode: swap fg/bg so the panel is white-on-black
+
+// Current fg/bg GxEPD colours. Every draw goes through these so flipping
+// g_invert repaints the whole UI in the opposite scheme.
+static inline uint16_t cfg() { return g_invert ? GxEPD_WHITE : GxEPD_BLACK; }
+static inline uint16_t cbg() { return g_invert ? GxEPD_BLACK : GxEPD_WHITE; }
 
 // Fixed top status bar (clock / GPS / battery), drawn by the app callback.
 static int          g_sb_h = 0;
@@ -398,7 +404,7 @@ static void layout(Node* n, int ox, int oy, int avail_w, int avail_h) {
 // ===========================================================================
 static void draw_text(int x, int y, const char* s, Font f, bool invert) {
     display.setTextSize(fsize(f));
-    display.setTextColor(invert ? GxEPD_WHITE : GxEPD_BLACK);
+    display.setTextColor(invert ? cbg() : cfg());
     int lh = line_h(f), cy = y;
     const char* p = s;
     char line[40]; int li = 0;
@@ -427,13 +433,13 @@ static void draw_node(Node* n) {
         for (int yy = 0; yy < n->ch; yy++)
             for (int xx = 0; xx < n->cw; xx++) {
                 uint8_t b = n->cbuf[yy * cv_stride(n) + (xx >> 3)];
-                if (b & (0x80 >> (xx & 7))) display.drawPixel(n->x + xx, sy + yy, GxEPD_BLACK);
+                if (b & (0x80 >> (xx & 7))) display.drawPixel(n->x + xx, sy + yy, cfg());
             }
         return;
     }
     // container
-    if (n == g_focus)   display.fillRect(n->x, sy, n->w, n->h, GxEPD_BLACK);
-    else if (n->card)   display.drawRect(n->x, sy, n->w, n->h, GxEPD_BLACK);
+    if (n == g_focus)   display.fillRect(n->x, sy, n->w, n->h, cfg());
+    else if (n->card)   display.drawRect(n->x, sy, n->w, n->h, cfg());
     for (Node* c = n->first_child; c; c = c->next_sib) draw_node(c);
 }
 
@@ -466,8 +472,8 @@ static void draw_toast() {
     int bx = (display.width() - bw) / 2;
     if (bx < 0) { bx = 0; bw = display.width(); }
     int by = header_h() + 4;
-    display.fillRect(bx, by, bw, bh, GxEPD_WHITE);
-    display.drawRect(bx, by, bw, bh, GxEPD_BLACK);
+    display.fillRect(bx, by, bw, bh, cbg());
+    display.drawRect(bx, by, bw, bh, cfg());
     draw_text(bx + 6, by + 4, g_toast, Font::Body, false);
 }
 
@@ -519,14 +525,14 @@ void render() {
 
     display.firstPage();
     do {
-        display.fillScreen(GxEPD_WHITE);
+        display.fillScreen(cbg());
         draw_node(g_root);
         if (g_sb_fn) {
             // Status bar on top — clear the band (in case content scrolled under
             // it), let the app paint it, then a separator line.
-            display.fillRect(0, 0, display.width(), g_sb_h, GxEPD_WHITE);
+            display.fillRect(0, 0, display.width(), g_sb_h, cbg());
             g_sb_fn(display.width(), g_sb_h);
-            display.drawFastHLine(0, g_sb_h - 1, display.width(), GxEPD_BLACK);
+            display.drawFastHLine(0, g_sb_h - 1, display.width(), cfg());
         }
         draw_toast();
     } while (display.nextPage());
@@ -534,6 +540,17 @@ void render() {
 }
 
 void redraw() { g_dirty = true; }
+
+uint16_t fg() { return cfg(); }
+uint16_t bg() { return cbg(); }
+bool get_invert() { return g_invert; }
+void set_invert(bool on) {
+    if (g_invert == on) return;
+    g_invert = on;
+    s_drawn = false;   // force a full refresh so the e-ink clears the old scheme cleanly
+    g_dirty = true;
+}
+
 void set_statusbar(int h, StatusbarFn fn) { g_sb_h = h; g_sb_fn = fn; g_dirty = true; }
 
 void tick(uint32_t now_ms) {

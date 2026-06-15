@@ -15,6 +15,7 @@ static void on_mesh(void*)    { ui::screen_mgr::push(SCREEN_SET_MESH, true); }
 static void on_display(void*) { ui::screen_mgr::push(SCREEN_SET_DISPLAY, true); }
 static void on_ble(void*)     { ui::screen_mgr::push(SCREEN_SET_BLE, true); }
 #ifdef BOARD_WIO_L1
+static void on_sound(void*)   { ui::screen_mgr::push(SCREEN_SOUND, true); }
 static void on_privacy(void*) { ui::screen_mgr::push(SCREEN_PRIVACY, true); }
 #endif
 #ifndef BOARD_WIO_L1
@@ -28,6 +29,7 @@ static void create(Handle parent) {
 #ifdef BOARD_WIO_L1
     // Wio mono build: only the radio-relevant, fully-portable settings screens.
     menu_row(menu, i18n::t(i18n::T_DISPLAY),       on_display, nullptr);
+    menu_row(menu, i18n::t(i18n::T_SOUND),         on_sound,   nullptr);
     menu_row(menu, i18n::t(i18n::T_BLUETOOTH),     on_ble,     nullptr);
     menu_row(menu, i18n::t(i18n::T_GPS_SETTINGS),  on_gps,     nullptr);
     menu_row(menu, i18n::t(i18n::T_MESH_SETTINGS), on_mesh,    nullptr);

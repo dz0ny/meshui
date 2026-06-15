@@ -7,6 +7,9 @@
 #include <limits.h>
 #include <math.h>
 #include "../mesh_bridge.h"
+#ifdef PIN_BUZZER
+#include "../mesh_task.h"   // mesh::task::get_msg_channel() — gate channel chirps
+#endif
 
 #define CMD_APP_START                 1
 #define CMD_SEND_TXT_MSG              2
@@ -681,7 +684,15 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     frame[0] = PUSH_CODE_MSG_WAITING; // send push 'tickle'
     _serial->writeFrame(frame, 1);
   } else {
+    // Only chirp for the channel this device is tuned to (the one shown on the
+    // Messages screen) — messages on other channels are still stored/queued,
+    // just silently. get_msg_channel() is a buzzer-build feature; other builds
+    // notify unconditionally.
+#ifdef PIN_BUZZER
+    if (_ui && channel_idx == mesh::task::get_msg_channel()) _ui->notify(UIEventType::channelMessage);
+#else
     if (_ui) _ui->notify(UIEventType::channelMessage);
+#endif
   }
   // Push channel message to UI bridge
   const char *channel_name = "Unknown";
@@ -1217,6 +1228,16 @@ void MyMesh::maybeSendFastGpsUpdate() {
 
   LocationProvider *location = sensors.getLocationProvider();
   if (location == NULL || !location->isValid()) {
+    resetFastGpsShareState();
+    return;
+  }
+
+  // Stationary suppression: while ground speed rounds to 0 km/h, send nothing at
+  // all — no movement beacons, no stationary keepalives. Clearing the share state
+  // means the instant we start moving again (_gps_speed_kmh climbs back above the
+  // 0.5 km/h rounding floor used for the speed byte below) an immediate position
+  // beacon goes out. Saves airtime and battery while the tracker is parked.
+  if (_gps_speed_kmh < 0.5) {
     resetFastGpsShareState();
     return;
   }

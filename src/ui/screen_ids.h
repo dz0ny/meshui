@@ -35,4 +35,6 @@ enum screen_id {
     SCREEN_COMPASS              = 27,
     SCREEN_PRIVACY              = 28,
     SCREEN_TEAM                 = 29,
+    SCREEN_SOUND                = 30,
+    SCREEN_DASH                 = 31,
 };

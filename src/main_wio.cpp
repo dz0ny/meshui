@@ -15,6 +15,7 @@
 #include "ui/screens/set_gps.h"
 #include "ui/screens/set_mesh.h"
 #include "ui/screens/set_display.h"
+#include "ui/screens/set_sound.h"
 #include "ui/screens/set_privacy.h"
 #include "ui/screens/set_ble.h"
 #include "ui/screens/chat.h"
@@ -162,7 +163,7 @@ static void draw_statusbar(int w, int h) {
     (void)h;
     display.setFont(nullptr);
     display.setTextSize(1);
-    display.setTextColor(GxEPD_BLACK);
+    display.setTextColor(mono::fg());   // tracks dark-mode invert
 
     char t[8];
     snprintf(t, sizeof(t), "%02d:%02d", model::clock.hour, model::clock.minute);
@@ -199,6 +200,57 @@ static void home_create(Handle root) {
 static void noop() {}
 static screen_lifecycle_t home_life = { home_create, noop, noop, noop };
 
+// ---- default dashboard (idle landing screen) --------------------------------
+// The screen the tracker boots into and returns to. No status bar — instead it
+// shows GPS + battery top-right, a big clock, and the unread message count.
+// Pressing the joystick opens the menu (the old home screen).
+static Handle dash_gpsbatt = nullptr;
+static Handle dash_clock   = nullptr;
+static Handle dash_unread  = nullptr;
+static ui::kit::Timer dash_timer = nullptr;
+
+static void dash_refresh(void*) {
+    if (dash_clock) set_textf(dash_clock, "%02d:%02d", model::clock.hour, model::clock.minute);
+    if (dash_gpsbatt) {
+        if (model::gps.has_fix)
+            set_textf(dash_gpsbatt, "GPS %d  %d%%", (int)model::gps.satellites, model::battery.percent);
+        else
+            set_textf(dash_gpsbatt, "GPS --  %d%%", model::battery.percent);
+    }
+    if (dash_unread) set_textf(dash_unread, "%d %s", model::sleep_cfg.unread_messages, i18n::t(i18n::T_UNREAD));
+}
+
+static void dash_create(Handle root) {
+    free_layout(root);
+
+    dash_gpsbatt = label(root, "GPS --  0%");
+    font(dash_gpsbatt, Font::Body);
+    align(dash_gpsbatt, Align::TopRight);
+
+    dash_clock = label(root, "00:00");
+    font(dash_clock, Font::ClockLg);
+    align(dash_clock, Align::Center, 0, -10);
+
+    dash_unread = label(root, "0 unread");
+    font(dash_unread, Font::Title);
+    align(dash_unread, Align::Center, 0, 26);
+
+    // No on-screen controls: poll_buttons() routes ANY button press here straight
+    // to the menu (the old home screen).
+    dash_refresh(nullptr);
+}
+
+static void dash_entry() {
+    mono::set_statusbar(0, nullptr);          // hide the status bar on the dashboard
+    dash_timer = every(1000, dash_refresh, nullptr);
+}
+static void dash_exit() {
+    if (dash_timer) { stop(dash_timer); dash_timer = nullptr; }
+    mono::set_statusbar(14, draw_statusbar);  // restore it for every other screen
+}
+static void dash_destroy() { dash_gpsbatt = dash_clock = dash_unread = nullptr; }
+static screen_lifecycle_t dash_life = { dash_create, dash_entry, dash_exit, dash_destroy };
+
 // ---- joystick ---------------------------------------------------------------
 struct Btn { uint8_t pin; char key; bool prev; uint32_t t; };
 static Btn g_btns[] = {
@@ -213,8 +265,10 @@ static void poll_buttons() {
         bool down = (digitalRead(b.pin) == LOW);
         if (down && !b.prev && (now - b.t) > 150) {
             b.t = now;
-            if (b.key == 'B') ui::screen_mgr::pop(false);
-            else              mono::feed_key(b.key);
+            if (ui::screen_mgr::top_id() == SCREEN_DASH)
+                ui::screen_mgr::push(SCREEN_HOME, true);   // any button leaves the dashboard for the menu
+            else if (b.key == 'B') ui::screen_mgr::pop(false);
+            else                   mono::feed_key(b.key);
         }
         b.prev = down;
     }
@@ -248,6 +302,20 @@ static void load_timezone() {
     }
 }
 
+// ---- display invert persistence (single byte, 0/1) --------------------------
+// set_display.cpp writes "/invert" when the user toggles dark mode; loaded here
+// before the first screen is built so the UI comes up in the saved scheme.
+static void load_invert() {
+    InternalFS.begin();   // idempotent
+    using namespace Adafruit_LittleFS_Namespace;
+    File f = InternalFS.open("/invert", FILE_O_READ);
+    if (f) {
+        int b = f.read();
+        f.close();
+        if (b > 0) mono::set_invert(true);
+    }
+}
+
 void setup() {
     Serial.begin(115200);
     delay(200);
@@ -256,9 +324,11 @@ void setup() {
 
     load_language();         // pick up the saved UI language before building screens
     load_timezone();         // and the saved timezone offset for the clock
+    load_invert();           // and the saved dark-mode setting
     model::init_messages();  // allocate the message store
 
     // Bring the UI up first so the screen is responsive even if mesh init is slow.
+    ui::screen_mgr::register_screen(SCREEN_DASH,     &dash_life);
     ui::screen_mgr::register_screen(SCREEN_HOME,     &home_life);
     ui::screen_mgr::register_screen(SCREEN_STATUS,   &ui::screen::status::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_SETTINGS, &ui::screen::settings::lifecycle);
@@ -267,6 +337,7 @@ void setup() {
     ui::screen_mgr::register_screen(SCREEN_SET_GPS,  &ui::screen::set_gps::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_SET_MESH, &ui::screen::set_mesh::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_SET_DISPLAY, &ui::screen::set_display::lifecycle);
+    ui::screen_mgr::register_screen(SCREEN_SOUND, &ui::screen::set_sound::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_PRIVACY, &ui::screen::set_privacy::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_SET_BLE,  &ui::screen::set_ble::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_CHAT,     &ui::screen::chat::lifecycle);
@@ -276,7 +347,7 @@ void setup() {
     ui::screen_mgr::register_screen(SCREEN_BATTERY,  &ui::screen::battery::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_TEAM,     &ui::screen::team::lifecycle);
     mono::set_statusbar(14, draw_statusbar);
-    ui::screen_mgr::switch_to(SCREEN_HOME, false);
+    ui::screen_mgr::switch_to(SCREEN_DASH, false);
 
     // To debug a mesh-init hang, install the e-ink step drawer so the frozen
     // panel shows the last step reached:  mesh::task::diag_step = draw_mesh_step;
