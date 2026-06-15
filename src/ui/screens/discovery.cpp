@@ -136,7 +136,8 @@ void process_events() {
     rebuild_list();
 }
 
-static void create(lv_obj_t* parent) {
+static void create(ui::kit::Handle parent_kit) {
+    lv_obj_t* parent = (lv_obj_t*)parent_kit;
     scr = parent;
     lbl_filter = ui::screen_mgr::set_nav_action(filter_names[filter_mode], on_filter_cycle, NULL);
 

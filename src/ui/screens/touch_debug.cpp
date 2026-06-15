@@ -47,7 +47,8 @@ static void poll_touch(lv_timer_t* t) {
     }
 }
 
-static void create(lv_obj_t* parent) {
+static void create(ui::kit::Handle parent_kit) {
+    lv_obj_t* parent = (lv_obj_t*)parent_kit;
     scr = parent;
 
     // Remove all padding so canvas is truly 0,0 based

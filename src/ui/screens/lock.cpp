@@ -1,35 +1,40 @@
 #include <Arduino.h>
 #include "lock.h"
-#include "../ui_theme.h"
+#include "../ui_theme.h"          // SCREEN_* ids + UI_LOCK_* layout
 #include "../ui_screen_mgr.h"
 #include "../ui_port.h"
+#include "../kit/ui_kit.h"
 #include "../components/statusbar.h"
 #include "../../model.h"
 #include "../../board.h"
 
+// Lock screen — ported to the ui::kit facade.
+
 namespace ui::screen::lock {
 
-static lv_obj_t* lbl_node_name = NULL;
-static lv_obj_t* lbl_time = NULL;
-static lv_obj_t* lbl_date = NULL;
-static lv_obj_t* lbl_unread = NULL;
-static lv_obj_t* lbl_info = NULL;
+using namespace ui::kit;
+
+static Handle lbl_node_name = nullptr;
+static Handle lbl_time = nullptr;
+static Handle lbl_date = nullptr;
+static Handle lbl_unread = nullptr;
+static Handle lbl_info = nullptr;
 static char cached_node_name[64] = {};
 static char cached_time[8] = {};
 static char cached_date[16] = {};
 static char cached_unread[96] = {};
 static char cached_info[16] = {};
 
-static void set_label_text(lv_obj_t* label, char* cached, size_t cached_size, const char* text) {
-    if (!label || !text) return;
+static void set_label_text(Handle lbl, char* cached, size_t cached_size, const char* text) {
+    if (!lbl || !text) return;
     if (strcmp(cached, text) != 0) {
         strncpy(cached, text, cached_size - 1);
         cached[cached_size - 1] = 0;
-        lv_label_set_text(label, cached);
+        set_text(lbl, cached);
     }
 }
 
-static void on_unread_click(lv_event_t* e) {
+static void on_unread_click(void*) {
     model::touch_activity();
     model::clear_unread_messages();
     ui::statusbar::show();
@@ -38,53 +43,39 @@ static void on_unread_click(lv_event_t* e) {
     ui::screen_mgr::push(SCREEN_CHAT, false);
 }
 
-static void create(lv_obj_t* parent) {
-    lbl_node_name = lv_label_create(parent);
-    lv_obj_set_style_text_font(lbl_node_name, UI_FONT_TITLE, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl_node_name, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_obj_align(lbl_node_name, LV_ALIGN_TOP_MID, 0, UI_LOCK_NODE_Y);
-    lv_label_set_text(lbl_node_name, model::mesh.node_name ? model::mesh.node_name : T_PAPER_HW_VERSION);
+static void create(Handle parent) {
+    free_layout(parent);
 
-    lbl_time = lv_label_create(parent);
-    lv_obj_set_style_text_font(lbl_time, UI_FONT_CLOCK_LG, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl_time, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_obj_align(lbl_time, LV_ALIGN_TOP_MID, 0, UI_LOCK_CLOCK_Y);
-    lv_label_set_text(lbl_time, "");
+    lbl_node_name = label(parent, model::mesh.node_name ? model::mesh.node_name : T_PAPER_HW_VERSION);
+    font(lbl_node_name, Font::Title);
+    align(lbl_node_name, Align::TopMid, 0, UI_LOCK_NODE_Y);
 
-    lbl_date = lv_label_create(parent);
-    lv_obj_set_style_text_font(lbl_date, UI_FONT_TITLE, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl_date, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_obj_align(lbl_date, LV_ALIGN_TOP_MID, 0, UI_LOCK_DATE_Y);
-    lv_label_set_text(lbl_date, "");
+    lbl_time = label(parent, "");
+    font(lbl_time, Font::ClockLg);
+    align(lbl_time, Align::TopMid, 0, UI_LOCK_CLOCK_Y);
+
+    lbl_date = label(parent, "");
+    font(lbl_date, Font::Title);
+    align(lbl_date, Align::TopMid, 0, UI_LOCK_DATE_Y);
 
     // Unread messages — tappable, jumps directly to chat
-    lbl_unread = lv_label_create(parent);
-    lv_obj_set_style_text_font(lbl_unread, UI_FONT_TITLE, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl_unread, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_obj_align(lbl_unread, LV_ALIGN_CENTER, 0, 30);
-    lv_label_set_text(lbl_unread, "");
-    lv_obj_add_flag(lbl_unread, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(lbl_unread, 30);
-    lv_obj_add_event_cb(lbl_unread, on_unread_click, LV_EVENT_CLICKED, NULL);
-    ui::port::keyboard_focus_register(lbl_unread);
+    lbl_unread = label(parent, "");
+    font(lbl_unread, Font::Title);
+    align(lbl_unread, Align::Center, 0, 30);
+    on_click(lbl_unread, on_unread_click, nullptr);
+    focusable(lbl_unread);
 
-    lbl_info = lv_label_create(parent);
-    lv_obj_set_style_text_font(lbl_info, UI_FONT_BODY, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl_info, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_obj_align(lbl_info, LV_ALIGN_BOTTOM_MID, 0, -30);
-    lv_label_set_text(lbl_info, "");
+    lbl_info = label(parent, "");
+    font(lbl_info, Font::Body);
+    align(lbl_info, Align::BottomMid, 0, -30);
 }
 
 void update(uint32_t flags) {
     char buf[96];
 
     if (flags & model::DIRTY_MESH) {
-        set_label_text(
-            lbl_node_name,
-            cached_node_name,
-            sizeof(cached_node_name),
-            model::mesh.node_name ? model::mesh.node_name : "LilyGo T5 ePaper S3 Pro"
-        );
+        set_label_text(lbl_node_name, cached_node_name, sizeof(cached_node_name),
+                       model::mesh.node_name ? model::mesh.node_name : "LilyGo T5 ePaper S3 Pro");
     }
 
     if (flags & model::DIRTY_CLOCK) {
@@ -107,13 +98,7 @@ void update(uint32_t flags) {
         } else {
             buf[0] = 0;
         }
-        if (buf[0]) {
-            lv_obj_clear_flag(lbl_unread, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(lbl_unread, LV_OBJ_FLAG_CLICKABLE);
-        } else {
-            lv_obj_add_flag(lbl_unread, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(lbl_unread, LV_OBJ_FLAG_CLICKABLE);
-        }
+        hidden(lbl_unread, buf[0] == 0);
         set_label_text(lbl_unread, cached_unread, sizeof(cached_unread), buf);
     }
 
@@ -129,12 +114,10 @@ static void entry() {
     update(model::DIRTY_CLOCK | model::DIRTY_BATTERY | model::DIRTY_MESH | model::DIRTY_SLEEP);
 }
 
-static void exit_fn() {
-}
+static void exit_fn() {}
 
 static void destroy() {
-    lbl_node_name = NULL;
-    lbl_time = lbl_date = lbl_unread = lbl_info = NULL;
+    lbl_node_name = lbl_time = lbl_date = lbl_unread = lbl_info = nullptr;
     cached_node_name[0] = 0;
     cached_time[0] = 0;
     cached_date[0] = 0;

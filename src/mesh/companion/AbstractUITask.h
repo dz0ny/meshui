@@ -41,7 +41,9 @@ public:
   void disableSerial() { _serial->disable(); }
   virtual void setBuzzerQuiet(bool quiet) { (void)quiet; }
   virtual void msgRead(int msgcount) = 0;
-  virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) = 0;
+  // channel_idx: index of the group channel a message arrived on, or 0xFF for a
+  // direct (1:1) message. Lets the UI attribute/filter messages per channel.
+  virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, uint8_t channel_idx = 0xFF) = 0;
   virtual void telemetryResponse(const uint8_t* pub_key_prefix, const uint8_t* data, uint8_t len) = 0;
   virtual void traceResponse(uint32_t tag, uint8_t hop_count, int8_t snr_there_q4, int8_t snr_back_q4) = 0;
   virtual void notify(UIEventType t = UIEventType::none) = 0;

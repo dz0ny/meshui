@@ -1189,7 +1189,8 @@ void process_events() {
     if (changed) rebuild_list();
 }
 
-static void create(lv_obj_t* parent) {
+static void create(ui::kit::Handle parent_kit) {
+    lv_obj_t* parent = (lv_obj_t*)parent_kit;
     scr = parent;
 
     sensor_list = ui::nav::scroll_list(parent);

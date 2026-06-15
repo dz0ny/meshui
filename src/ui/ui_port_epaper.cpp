@@ -21,9 +21,11 @@ static int brightness = 1;  // default Mid
 static const char* bright_names[] = {"Low", "Mid", "High"};
 static const int bright_pwm[] = {50, 100, 230};
 static lv_display_t* epaper_disp = NULL;
-static uint8_t gray_to_lo[256];
-static uint8_t gray_to_hi[256];
-static bool gray_tables_ready = false;
+static int32_t i1_stride = 0;               // bytes per row of LVGL's I1 draw buffer
+// LVGL's default I1 palette: bit 1 = white. The e-ink theme draws black-on-white,
+// so a set bit is a white (background) pixel. Flip this if the panel comes out
+// inverted on first flash.
+#define I1_BIT_IS_WHITE 1
 static uint8_t* packed_prev_frame = NULL;  // packed 4-bit rotated framebuffer shadow
 static int32_t* rotated_row_offsets = NULL;
 static bool cycle_force_full_refresh = false;
@@ -63,15 +65,15 @@ static void sync_packed_prev_frame(uint8_t *fb, int32_t phys_w, int32_t phys_h) 
     memcpy(packed_prev_frame, fb, (size_t)(phys_w / 2) * phys_h);
 }
 
-static void init_gray_tables() {
-    if (gray_tables_ready) {
-        return;
-    }
-    for (int i = 0; i < 256; i++) {
-        gray_to_lo[i] = (uint8_t)(i >> 4);
-        gray_to_hi[i] = (uint8_t)(i & 0xF0);
-    }
-    gray_tables_ready = true;
+// Read one pixel out of an I1 row (MSB-first, 8 px/byte) and return whether it
+// is a white pixel — i.e. should map to epdiy's white nibble (0xF).
+static inline bool i1_is_white(const uint8_t* row, int32_t rx) {
+    uint8_t bit = (row[rx >> 3] >> (7 - (rx & 7))) & 1u;
+#if I1_BIT_IS_WHITE
+    return bit != 0;
+#else
+    return bit == 0;
+#endif
 }
 
 static void init_rotated_row_offsets(int32_t phys_h, int32_t half_w) {
@@ -233,7 +235,8 @@ static inline void pack_single_row(uint8_t *fb, const uint8_t *prev_fb, const ui
     if (is_odd) {
         for (int32_t rx = x1; rx <= x2; rx++) {
             int32_t offset = rotated_offset(rx, phys_h, half_w) + byte_x;
-            uint8_t packed = (uint8_t)((prev_fb[offset] & 0x0F) | gray_to_hi[src_row[rx]]);
+            uint8_t nib = i1_is_white(src_row, rx) ? 0xF0 : 0x00;
+            uint8_t packed = (uint8_t)((prev_fb[offset] & 0x0F) | nib);
             if (track_dirty_area && packed != prev_fb[offset]) {
                 *changed = true;
             }
@@ -242,7 +245,8 @@ static inline void pack_single_row(uint8_t *fb, const uint8_t *prev_fb, const ui
     } else {
         for (int32_t rx = x1; rx <= x2; rx++) {
             int32_t offset = rotated_offset(rx, phys_h, half_w) + byte_x;
-            uint8_t packed = (uint8_t)((prev_fb[offset] & 0xF0) | gray_to_lo[src_row[rx]]);
+            uint8_t nib = i1_is_white(src_row, rx) ? 0x0F : 0x00;
+            uint8_t packed = (uint8_t)((prev_fb[offset] & 0xF0) | nib);
             if (track_dirty_area && packed != prev_fb[offset]) {
                 *changed = true;
             }
@@ -258,7 +262,9 @@ static inline void pack_row_pair(uint8_t *fb, const uint8_t *prev_fb, const uint
     int32_t byte_x = even_ry / 2;
     for (int32_t rx = x1; rx <= x2; rx++) {
         int32_t offset = rotated_offset(rx, phys_h, half_w) + byte_x;
-        uint8_t packed = (uint8_t)(gray_to_hi[src_odd[rx]] | gray_to_lo[src_even[rx]]);
+        uint8_t hi = i1_is_white(src_odd, rx)  ? 0xF0 : 0x00;
+        uint8_t lo = i1_is_white(src_even, rx) ? 0x0F : 0x00;
+        uint8_t packed = (uint8_t)(hi | lo);
         if (track_dirty_area && packed != prev_fb[offset]) {
             *changed = true;
         }
@@ -275,7 +281,11 @@ static inline void pack_row_pair(uint8_t *fb, const uint8_t *prev_fb, const uint
 //   physical_y = epd_height() - 1 - rotated_x
 static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
-    init_gray_tables();
+    // I1 draw buffer: an 8-byte palette prefixes the pixel data, and each row is
+    // i1_stride bytes (1 bit/pixel, MSB first). Skip the palette, then address
+    // rows by the I1 stride instead of the old L8 byte-per-pixel layout.
+    const uint8_t *i1pix = px_map + 8;
+    const int32_t stride = i1_stride;
 
     int32_t area_w = lv_area_get_width(area);
     int32_t area_h = lv_area_get_height(area);
@@ -284,11 +294,19 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
     uint8_t *fb = epd_hl_get_framebuffer(&board::hl);
     int32_t phys_w = epd_width();
     int32_t phys_h = epd_height();
-    int32_t disp_w = epd_rotated_display_width();
 
-    // Pack L8 (8-bit gray) → 4-bit nibbles in epdiy framebuffer with inline rotation.
-    // Two adjacent source rows map to the same destination byte, so pack row pairs together
-    // to avoid the read-modify-write on every pixel.
+    // The panel width (rotated 540) is not a multiple of 8, so LVGL pads I1 rows
+    // up to 544 and can hand us an area with x past the real edge. Clamp X to the
+    // physical width — the padding columns are off-panel (and indexing the
+    // rotation table / framebuffer with them reads/writes out of bounds).
+    int32_t disp_w_rot = epd_rotated_display_width();
+    int32_t x1 = area->x1 < 0 ? 0 : area->x1;
+    int32_t x2 = area->x2 >= disp_w_rot ? disp_w_rot - 1 : area->x2;
+    if (x1 > x2) { lv_display_flush_ready(disp); return; }
+
+    // Pack I1 (1-bit) → 4-bit nibbles in epdiy framebuffer with inline rotation.
+    // Each source pixel is black or white; two adjacent source rows map to the
+    // same destination byte, so pack row pairs together.
     int32_t half_w = phys_w / 2;
     init_rotated_row_offsets(phys_h, half_w);
     if (!packed_prev_frame) {
@@ -302,21 +320,21 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
     bool track_dirty_area = packed_prev_frame && rotated_row_offsets;
     int32_t ry = area->y1;
     if (ry & 1) {
-        const uint8_t *src_row = &px_map[ry * disp_w];
+        const uint8_t *src_row = &i1pix[ry * stride];
         pack_single_row(fb, packed_prev_frame ? packed_prev_frame : fb, src_row, phys_h, half_w, ry,
-                        area->x1, area->x2, track_dirty_area, &changed);
+                        x1, x2, track_dirty_area, &changed);
         ry++;
     }
     for (; ry < area->y2; ry += 2) {
-        const uint8_t *src_even = &px_map[ry * disp_w];
-        const uint8_t *src_odd = &px_map[(ry + 1) * disp_w];
+        const uint8_t *src_even = &i1pix[ry * stride];
+        const uint8_t *src_odd = &i1pix[(ry + 1) * stride];
         pack_row_pair(fb, packed_prev_frame ? packed_prev_frame : fb, src_even, src_odd, phys_h, half_w, ry,
-                      area->x1, area->x2, track_dirty_area, &changed);
+                      x1, x2, track_dirty_area, &changed);
     }
     if (ry == area->y2) {
-        const uint8_t *src_row = &px_map[ry * disp_w];
+        const uint8_t *src_row = &i1pix[ry * stride];
         pack_single_row(fb, packed_prev_frame ? packed_prev_frame : fb, src_row, phys_h, half_w, ry,
-                        area->x1, area->x2, track_dirty_area, &changed);
+                        x1, x2, track_dirty_area, &changed);
     }
 
     if (track_dirty_area && !changed) {
@@ -328,8 +346,8 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
 
     // Sync the shadow for the dirty region (fb now holds the new packed bytes).
     if (packed_prev_frame) {
-        int32_t packed_y1 = phys_h - 1 - area->x2;
-        int32_t packed_y2 = phys_h - 1 - area->x1;
+        int32_t packed_y1 = phys_h - 1 - x2;
+        int32_t packed_y2 = phys_h - 1 - x1;
         int32_t packed_x1 = area->y1 / 2;
         int32_t packed_x2 = area->y2 / 2;
         int32_t packed_len = packed_x2 - packed_x1 + 1;
@@ -347,15 +365,15 @@ static void disp_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
     // in render_ready_cb so we get a single panel waveform per refresh cycle.
     if (!cycle_force_full_refresh) {
         if (!cycle_union_valid) {
-            cycle_union_rect.x1 = area->x1;
+            cycle_union_rect.x1 = x1;
             cycle_union_rect.y1 = area->y1;
-            cycle_union_rect.x2 = area->x2;
+            cycle_union_rect.x2 = x2;
             cycle_union_rect.y2 = area->y2;
             cycle_union_valid = true;
         } else {
-            if (area->x1 < cycle_union_rect.x1) cycle_union_rect.x1 = area->x1;
+            if (x1 < cycle_union_rect.x1) cycle_union_rect.x1 = x1;
             if (area->y1 < cycle_union_rect.y1) cycle_union_rect.y1 = area->y1;
-            if (area->x2 > cycle_union_rect.x2) cycle_union_rect.x2 = area->x2;
+            if (x2 > cycle_union_rect.x2) cycle_union_rect.x2 = x2;
             if (area->y2 > cycle_union_rect.y2) cycle_union_rect.y2 = area->y2;
         }
     }
@@ -472,14 +490,18 @@ void init() {
     lv_display_t *disp = lv_display_create(disp_w, disp_h);
     epaper_disp = disp;
     lv_display_set_flush_cb(disp, disp_flush_cb);
-    lv_display_set_color_format(disp, LV_COLOR_FORMAT_L8);
+    lv_display_set_color_format(disp, LV_COLOR_FORMAT_I1);
     lv_display_add_event_cb(disp, round_invalidate_area_cb, LV_EVENT_INVALIDATE_AREA, NULL);
     lv_display_add_event_cb(disp, render_start_cb, LV_EVENT_RENDER_START, NULL);
     lv_display_add_event_cb(disp, render_ready_cb, LV_EVENT_REFR_READY, NULL);
 
-    // DIRECT mode with L8 (8-bit luminance): LVGL renders grayscale directly.
-    // Single buffered in PSRAM to reduce memory pressure on the S3.
-    size_t buf_size = pixel_count;  // 1 byte per pixel for L8
+    // DIRECT mode with I1 (1-bit): LVGL renders pure black/white. The flush
+    // packs each bit to epdiy's 4-bit nibble (black 0x0 / white 0xF). The buffer
+    // is row-padded to i1_stride bytes with an 8-byte palette prefix, per LVGL's
+    // monochrome buffer contract. Single buffered in PSRAM.
+    i1_stride = (int32_t)lv_draw_buf_width_to_stride(disp_w, LV_COLOR_FORMAT_I1);
+    size_t buf_size = (size_t)i1_stride * disp_h + 8;  // +8 = I1 palette header
+    (void)pixel_count;
     void *buf1 = ps_calloc(1, buf_size);
     lv_display_set_buffers(disp, buf1, NULL, buf_size, LV_DISPLAY_RENDER_MODE_DIRECT);
 

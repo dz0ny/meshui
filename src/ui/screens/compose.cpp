@@ -474,7 +474,13 @@ static lv_obj_t* create_full_panel(lv_obj_t* parent) {
     lv_obj_t* panel = lv_obj_create(parent);
     lv_obj_set_size(panel, lv_pct(100), lv_pct(100));
     lv_obj_set_pos(panel, 0, 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_0, LV_PART_MAIN);
+    // Opaque background, not transparent: the picker and editor panels overlap,
+    // and on e-ink (no alpha blending, persistent pixels) a transparent panel
+    // leaves the previous panel's widgets — e.g. the "Choose recipient" card —
+    // showing through behind the one now on top. A solid background repaints the
+    // whole area on show, clearing the panel underneath.
+    lv_obj_set_style_bg_color(panel, lv_color_hex(EPD_COLOR_BG), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(panel, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(panel, 0, LV_PART_MAIN);
     lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
@@ -568,12 +574,9 @@ static void create_epaper_picker_panel(lv_obj_t* parent) {
     lv_label_set_long_mode(picker_lbl_to, LV_LABEL_LONG_DOT);
     lv_obj_align(picker_lbl_to, LV_ALIGN_TOP_LEFT, 0, 30);
 
-    picker_lbl_hint = lv_label_create(picker_card);
-    lv_obj_set_width(picker_lbl_hint, lv_pct(100));
-    lv_obj_set_style_text_font(picker_lbl_hint, UI_FONT_SMALL, LV_PART_MAIN);
-    lv_obj_set_style_text_color(picker_lbl_hint, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_label_set_long_mode(picker_lbl_hint, LV_LABEL_LONG_DOT);
-    lv_obj_align(picker_lbl_hint, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    // No "People and channels" hint here — it collided with the big "Choose
+    // recipient" value above, and the Favorites/Channels/People tabs below
+    // already convey it. picker_lbl_hint stays null; update_recipient_card guards it.
 
     filter_row = lv_obj_create(picker_panel);
     lv_obj_set_size(filter_row, lv_pct(95), UI_COMPOSE_FILTERS_H);
@@ -706,7 +709,8 @@ static void create_epaper_editor_panel(lv_obj_t* parent) {
 }
 #endif
 
-static void create(lv_obj_t* parent) {
+static void create(ui::kit::Handle parent_kit) {
+    lv_obj_t* parent = (lv_obj_t*)parent_kit;
     scr = parent;
     lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(parent, LV_SCROLLBAR_MODE_OFF);

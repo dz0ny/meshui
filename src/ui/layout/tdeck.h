@@ -86,9 +86,10 @@
 // ---------- Home screen ----------
 #define UI_HOME_NODE_Y       13
 #define UI_HOME_SHOW_NODE    1
-#define UI_HOME_CLOCK_Y      22
-#define UI_HOME_DATE_Y       52
-#define UI_HOME_MENU_Y       70
+#define UI_HOME_CLOCK_INLINE 1       // time + date on one small line
+#define UI_HOME_CLOCK_Y      34
+#define UI_HOME_DATE_Y       52      // unused when inline
+#define UI_HOME_MENU_Y       54
 #define UI_HOME_MENU_SCROLL  1       // menu must scroll on 240px screen
 
 // ---------- Lock screen ----------

@@ -24,6 +24,8 @@ TARGETS = [
         "env": "t5-epaper",
         "slug": "lilygo-t5-epaper-pro",
         "device_name": "LilyGo T5 ePaper S3 Pro",
+        "flash_method": "esp-web-tools",
+        "chip_label": CHIP_FAMILY,
         "description": "Flash the latest PlatformIO build for the LilyGo T5 ePaper S3 Pro directly from Chrome or Edge with ESP Web Tools. It works as both a standalone mesh device and a companion-connected MeshCore node.",
         "product_url": "https://lilygo.cc/en-us/products/t5-e-paper-s3-pro",
         "product_image": "main.jpeg",
@@ -38,8 +40,21 @@ TARGETS = [
         "env": "tdeck",
         "slug": "tdeck",
         "device_name": "LilyGo T-Deck",
+        "flash_method": "esp-web-tools",
+        "chip_label": CHIP_FAMILY,
         "description": "Flash the latest PlatformIO build for the LilyGo T-Deck directly from Chrome or Edge with ESP Web Tools. It works as both a standalone mesh device and a companion-connected MeshCore node.",
         "product_url": "https://lilygo.cc/en-us/products/t-deck",
+        "product_image": None,
+        "screenshots": [],
+    },
+    {
+        "env": "wio-tracker-l1",
+        "slug": "wio-tracker-l1",
+        "device_name": "Seeed Wio Tracker L1",
+        "flash_method": "uf2",
+        "chip_label": "nRF52840",
+        "description": "The Wio Tracker L1 is an nRF52840 mono e-ink tracker, so it flashes by drag-and-drop UF2 rather than Web Serial. Download the firmware below and copy it onto the bootloader drive — no toolchain required.",
+        "product_url": None,
         "product_image": None,
         "screenshots": [],
     },
@@ -80,9 +95,10 @@ def build_target_card(target: dict, version: str) -> str:
     safe_version = html.escape(version)
     device_name = html.escape(target["device_name"])
     description = html.escape(target["description"])
-    product_url = html.escape(target.get("product_url", ""), quote=True)
+    product_url = html.escape(target.get("product_url") or "", quote=True)
+    chip_label = html.escape(target.get("chip_label", CHIP_FAMILY))
+    method = target.get("flash_method", "esp-web-tools")
     slug = target["slug"]
-    manifest = f"{slug}/manifest.json"
 
     product_image_html = ""
     if target.get("product_image"):
@@ -114,23 +130,45 @@ def build_target_card(target: dict, version: str) -> str:
     if product_url:
         product_link = f'<a class="text-paper-accent underline decoration-1 underline-offset-2" href="{product_url}">Product Page</a>'
 
+    eyebrow = "UF2 Drag &amp; Drop" if method == "uf2" else "Browser Flasher"
+
+    if method == "uf2":
+        uf2_name = f"{slug}-{version}.uf2"
+        href = html.escape(f"{slug}/{uf2_name}", quote=True)
+        action_html = f"""
+          <div class="flex flex-wrap items-center gap-4">
+            <a class="inline-block border border-paper-line bg-paper-accent px-5 py-3 text-sm font-semibold text-paper-panel" href="{href}" download>Download UF2 firmware</a>
+            {product_link}
+          </div>
+          <div class="border border-paper-line bg-[#fcfcfa] p-4 text-sm leading-6 text-paper-muted">
+            <p class="font-semibold text-paper-text">Install (drag &amp; drop)</p>
+            <ol class="mt-2 list-decimal space-y-1 pl-5">
+              <li>Connect the tracker to your computer over USB.</li>
+              <li>Double-tap the <strong>RESET</strong> button to enter the bootloader — a <code>TRACKER L1</code> drive appears.</li>
+              <li>Copy the downloaded <code>.uf2</code> onto that drive. The board reboots into the new firmware automatically.</li>
+            </ol>
+          </div>"""
+    else:
+        manifest = html.escape(f"{slug}/manifest.json", quote=True)
+        action_html = f"""
+          <div class="flex flex-wrap items-center gap-4">
+            <esp-web-install-button manifest="{manifest}"></esp-web-install-button>
+            {product_link}
+          </div>"""
+
     return f"""
       <section class="overflow-hidden border border-paper-line bg-paper-panel">
         <div class="border-b border-paper-line p-7 max-sm:p-5">
-          <p class="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-paper-muted">Browser Flasher</p>
+          <p class="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-paper-muted">{eyebrow}</p>
           <h1 class="text-[clamp(1.5rem,5vw,2.4rem)] font-bold leading-none">{device_name}</h1>
           <p class="mt-4 max-w-[34rem] text-base leading-6 text-paper-muted">{description}</p>
         </div>
         <div class="grid gap-5 p-7 max-sm:p-5">
           <div class="flex flex-wrap gap-2">
             <span class="border border-paper-line bg-[#fcfcfa] px-3 py-2 text-sm">Device: {device_name}</span>
-            <span class="border border-paper-line bg-[#fcfcfa] px-3 py-2 text-sm">Chip: {CHIP_FAMILY}</span>
+            <span class="border border-paper-line bg-[#fcfcfa] px-3 py-2 text-sm">Chip: {chip_label}</span>
             <span class="border border-paper-line bg-[#fcfcfa] px-3 py-2 text-sm">Build: {safe_version}</span>
-          </div>
-          <div class="flex flex-wrap items-center gap-4">
-            <esp-web-install-button manifest="{manifest}"></esp-web-install-button>
-            {product_link}
-          </div>{product_image_html}{screenshots_html}
+          </div>{action_html}{product_image_html}{screenshots_html}
         </div>
       </section>"""
 
@@ -197,10 +235,10 @@ def build_page(version: str, repo_url: str) -> str:
       </div>
 {cards}
       <div class="px-7 max-sm:px-5">
-        <p class="text-sm leading-6 text-paper-muted">Use a USB data cable and open this page in a Web Serial capable browser (Chrome/Edge).</p>
+        <p class="text-sm leading-6 text-paper-muted">Use a USB data cable. ESP32 boards (T5 ePaper, T-Deck) flash in-browser over Web Serial (Chrome/Edge); the nRF52 Wio Tracker L1 installs by copying its UF2 onto the bootloader drive.</p>
         <ol class="list-decimal space-y-1 pl-5 text-sm leading-6 text-paper-muted mt-2">
           <li>Put the board in bootloader mode if the browser cannot detect it.</li>
-          <li>Choose erase when you want a clean install.</li>
+          <li>Choose erase when you want a clean install (Web Serial only).</li>
         </ol>
       </div>
     </main>
@@ -221,52 +259,60 @@ def main() -> None:
     for target in TARGETS:
         env = target["env"]
         slug = target["slug"]
+        method = target.get("flash_method", "esp-web-tools")
         build_dir = build_base / env
-
-        bootloader = build_dir / "bootloader.bin"
-        partitions = build_dir / "partitions.bin"
-        firmware = build_dir / "firmware.bin"
-
-        for path in (bootloader, partitions, firmware, boot_app0):
-            if not path.is_file():
-                raise FileNotFoundError(path)
 
         target_dir = output_dir / slug
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        merged_firmware = target_dir / "merged-firmware.bin"
+        if method == "uf2":
+            # nRF52840: no ESP Web Tools / esptool. Publish the UF2 for drag-and-drop.
+            uf2 = build_dir / "firmware.uf2"
+            if not uf2.is_file():
+                raise FileNotFoundError(uf2)
+            shutil.copy2(uf2, target_dir / f"{slug}-{args.version}.uf2")
+        else:
+            bootloader = build_dir / "bootloader.bin"
+            partitions = build_dir / "partitions.bin"
+            firmware = build_dir / "firmware.bin"
 
-        run(
-            [
-                "python",
-                "-m",
-                "esptool",
-                "--chip",
-                CHIP,
-                "merge-bin",
-                "-o",
-                str(merged_firmware),
-                "--flash-mode",
-                FLASH_MODE,
-                "--flash-freq",
-                FLASH_FREQ,
-                "--flash-size",
-                FLASH_SIZE,
-                BOOTLOADER_OFFSET,
-                str(bootloader),
-                PARTITIONS_OFFSET,
-                str(partitions),
-                BOOT_APP0_OFFSET,
-                str(boot_app0),
-                APP_OFFSET,
-                str(firmware),
-            ]
-        )
+            for path in (bootloader, partitions, firmware, boot_app0):
+                if not path.is_file():
+                    raise FileNotFoundError(path)
 
-        manifest = f"""{{\n  "name": "{target['device_name']}",\n  "version": "{args.version}",\n  "new_install_prompt_erase": true,\n  "builds": [\n    {{\n      "chipFamily": "{CHIP_FAMILY}",\n      "parts": [\n        {{\n          "path": "merged-firmware.bin",\n          "offset": 0\n        }}\n      ]\n    }}\n  ]\n}}"""
+            merged_firmware = target_dir / "merged-firmware.bin"
 
-        (target_dir / "manifest.json").write_text(manifest, encoding="utf-8")
-        shutil.copy2(merged_firmware, target_dir / f"{slug}-{args.version}.bin")
+            run(
+                [
+                    "python",
+                    "-m",
+                    "esptool",
+                    "--chip",
+                    CHIP,
+                    "merge-bin",
+                    "-o",
+                    str(merged_firmware),
+                    "--flash-mode",
+                    FLASH_MODE,
+                    "--flash-freq",
+                    FLASH_FREQ,
+                    "--flash-size",
+                    FLASH_SIZE,
+                    BOOTLOADER_OFFSET,
+                    str(bootloader),
+                    PARTITIONS_OFFSET,
+                    str(partitions),
+                    BOOT_APP0_OFFSET,
+                    str(boot_app0),
+                    APP_OFFSET,
+                    str(firmware),
+                ]
+            )
+
+            manifest = f"""{{\n  "name": "{target['device_name']}",\n  "version": "{args.version}",\n  "new_install_prompt_erase": true,\n  "builds": [\n    {{\n      "chipFamily": "{CHIP_FAMILY}",\n      "parts": [\n        {{\n          "path": "merged-firmware.bin",\n          "offset": 0\n        }}\n      ]\n    }}\n  ]\n}}"""
+
+            (target_dir / "manifest.json").write_text(manifest, encoding="utf-8")
+            shutil.copy2(merged_firmware, target_dir / f"{slug}-{args.version}.bin")
 
         # Copy images if they exist
         if target.get("product_image"):

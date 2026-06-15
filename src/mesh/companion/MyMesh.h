@@ -105,6 +105,11 @@ public:
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
+  // Fast-GPS region table (single source of truth, shared with the settings UI).
+  // Index 0 = unscoped; 1..N = public hashtag region names.
+  static uint8_t     fastGpsRegionCount();
+  static const char* fastGpsRegionName(uint8_t idx);  // "" for unscoped/out-of-range
+
 protected:
   float getAirtimeBudgetFactor() const override;
   int getInterferenceThreshold() const override;
@@ -135,6 +140,8 @@ protected:
                            const uint8_t *sender_prefix, const char *text) override;
   void onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint32_t timestamp,
                             const char *text) override;
+  void onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint16_t data_type,
+                         const uint8_t *data, size_t data_len) override;
 
   uint8_t onContactRequest(const ContactInfo &contact, uint32_t sender_timestamp, const uint8_t *data,
                            uint8_t len, uint8_t *reply) override;
@@ -229,6 +236,14 @@ private:
   int32_t _gps_last_fix_lat_e6;
   int32_t _gps_last_fix_lon_e6;
   uint32_t _gps_last_fix_timestamp;
+  // Ground speed (km/h) derived on the mesh core from successive fixes; sent in the
+  // fast-GPS beacon. We integrate position ourselves because LocationProvider exposes
+  // no speed. Baseline is the last sample that crossed the displacement gate.
+  double _gps_speed_kmh;
+  bool _gps_speed_prev_valid;
+  int32_t _gps_speed_prev_lat_e6;
+  int32_t _gps_speed_prev_lon_e6;
+  unsigned long _gps_speed_prev_ms;
 
   TransportKey send_scope;
 

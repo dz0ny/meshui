@@ -56,34 +56,7 @@ extern lv_style_t style_transparent;    // bg_opa=0, border=0, pad=0 containers
 #define EPD_COLOR_PROMPT_TXT  (ui::theme::colors().prompt_txt)
 
 // ---------- Screen IDs ----------
-
-enum screen_id {
-    SCREEN_HOME     = 0,
-    SCREEN_CONTACTS = 1,
-    SCREEN_CHAT     = 2,
-    SCREEN_SETTINGS = 3,
-    SCREEN_GPS      = 4,
-    SCREEN_BATTERY  = 5,
-    SCREEN_MESH     = 6,
-    SCREEN_STATUS   = 7,
-    SCREEN_SET_DISPLAY = 8,
-    SCREEN_SET_GPS     = 9,
-    SCREEN_SET_MESH    = 10,
-    SCREEN_DISCOVERY   = 11,
-    SCREEN_LOCK        = 12,
-    SCREEN_CONTACT_DETAIL = 13,
-    SCREEN_MSG_DETAIL     = 14,
-    SCREEN_SET_BLE        = 15,
-    SCREEN_SET_STORAGE    = 16,
-    SCREEN_COMPOSE        = 17,
-    SCREEN_MAP            = 18,
-    SCREEN_SENSORS        = 19,
-    SCREEN_PING           = 20,
-    SCREEN_SETTINGS_PREFERENCES = 21,
-    SCREEN_SETTINGS_DEBUG       = 22,
-    SCREEN_SETTINGS_DEVICE      = 23,
-    SCREEN_TOUCH_DEBUG          = 24,
-};
+#include "screen_ids.h"
 
 // ---------- Font declarations ----------
 

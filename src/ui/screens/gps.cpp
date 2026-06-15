@@ -1,84 +1,71 @@
+#include <cstdio>
 #include "gps.h"
-#include "../ui_theme.h"
 #include "../ui_screen_mgr.h"
-#include "../components/nav_button.h"
+#include "../kit/ui_kit.h"
+#include "../i18n.h"
 #include "../../model.h"
+
+// GPS screen — first screen ported onto the ui::kit facade (no direct lv_* use),
+// so it compiles unchanged against both the LVGL backend (ESP32) and the future
+// mono backend (nRF52 tracker).
 
 namespace ui::screen::gps {
 
-static lv_obj_t* scr = NULL;
-static lv_timer_t* update_timer = NULL;
+using namespace ui::kit;
 
-static lv_obj_t* lbl_status = NULL;
-static lv_obj_t* lbl_lat = NULL;
-static lv_obj_t* lbl_lng = NULL;
-static lv_obj_t* lbl_sats = NULL;
-static lv_obj_t* lbl_altitude = NULL;
+static Timer  update_timer = nullptr;
+static Handle lbl_status   = nullptr;
+static Handle lbl_lat      = nullptr;
+static Handle lbl_lng      = nullptr;
+static Handle lbl_sats     = nullptr;
+static Handle lbl_altitude = nullptr;
+static Handle lbl_speed    = nullptr;
 
-static lv_obj_t* info_row(lv_obj_t* parent, const char* label) {
-    lv_obj_t* row = lv_obj_create(parent);
-    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(row, LV_OPA_0, LV_PART_MAIN);
-    lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(row, 4, LV_PART_MAIN);
-    lv_obj_set_style_pad_hor(row, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+// Uses the facade's ui::kit::info_row (label-left, value-right; returns the
+// value handle) so the row styling/sizing comes from the active backend.
 
-    lv_obj_t* lbl = lv_label_create(row);
-    lv_obj_set_style_text_font(lbl, UI_FONT_BODY, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_label_set_text(lbl, label);
-
-    lv_obj_t* val = lv_label_create(row);
-    lv_obj_set_style_text_font(val, UI_FONT_BODY, LV_PART_MAIN);
-    lv_obj_set_style_text_color(val, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_label_set_text(val, "--");
-    return val;
-}
-
-static void on_back(lv_event_t* e) { ui::screen_mgr::pop(true); }
-
-static void update_cb(lv_timer_t* t) {
+static void update_cb(void*) {
     auto& g = model::gps;
-    lv_label_set_text(lbl_status, g.status_text ? g.status_text : "--");
+    set_text(lbl_status, g.status_text ? g.status_text : "--");
     if (g.has_fix) {
-        lv_label_set_text_fmt(lbl_lat, "%.6f", g.lat);
-        lv_label_set_text_fmt(lbl_lng, "%.6f", g.lng);
-        lv_label_set_text_fmt(lbl_altitude, "%.0f m", g.altitude_m);
+        static char buf[24];
+        snprintf(buf, sizeof(buf), "%.6f", g.lat);   set_text(lbl_lat, buf);
+        snprintf(buf, sizeof(buf), "%.6f", g.lng);   set_text(lbl_lng, buf);
+        snprintf(buf, sizeof(buf), "%.0f m", g.altitude_m); set_text(lbl_altitude, buf);
+        snprintf(buf, sizeof(buf), "%.1f km/h", g.speed_kmh); set_text(lbl_speed, buf);
     } else {
-        lv_label_set_text(lbl_lat, "--");
-        lv_label_set_text(lbl_lng, "--");
-        lv_label_set_text(lbl_altitude, "--");
+        set_text(lbl_lat, "--");
+        set_text(lbl_lng, "--");
+        set_text(lbl_altitude, "--");
+        set_text(lbl_speed, "--");
     }
-    lv_label_set_text_fmt(lbl_sats, "%lu", (unsigned long)g.satellites);
+    static char sbuf[12];
+    snprintf(sbuf, sizeof(sbuf), "%lu", (unsigned long)g.satellites);
+    set_text(lbl_sats, sbuf);
 }
 
-static void create(lv_obj_t* parent) {
-    scr = parent;
+static void create(Handle parent) {
+    Handle lst = list(parent);
 
-    lv_obj_t* list = ui::nav::scroll_list(parent);
-
-    lbl_status   = info_row(list, "Status");
-    lbl_lat      = info_row(list, "Latitude");
-    lbl_lng      = info_row(list, "Longitude");
-    lbl_sats     = info_row(list, "Satellites");
-    lbl_altitude = info_row(list, "Altitude");
+    lbl_status   = info_row(lst, i18n::t(i18n::T_GPS_STATUS));
+    lbl_lat      = info_row(lst, i18n::t(i18n::T_LATITUDE));
+    lbl_lng      = info_row(lst, i18n::t(i18n::T_LONGITUDE));
+    lbl_sats     = info_row(lst, i18n::t(i18n::T_SATELLITES));
+    lbl_altitude = info_row(lst, i18n::t(i18n::T_ALTITUDE));
+    lbl_speed    = info_row(lst, i18n::t(i18n::T_SPEED));
 }
 
 static void entry() {
-    update_timer = lv_timer_create(update_cb, 2000, NULL);
-    update_cb(NULL);
+    update_timer = every(2000, update_cb, nullptr);
+    update_cb(nullptr);
 }
 
 static void exit_fn() {
-    if (update_timer) { lv_timer_del(update_timer); update_timer = NULL; }
+    if (update_timer) { stop(update_timer); update_timer = nullptr; }
 }
 
 static void destroy() {
-    scr = NULL;
-    lbl_status = lbl_lat = lbl_lng = lbl_sats = lbl_altitude = NULL;
+    lbl_status = lbl_lat = lbl_lng = lbl_sats = lbl_altitude = lbl_speed = nullptr;
 }
 
 screen_lifecycle_t lifecycle = { create, entry, exit_fn, destroy };

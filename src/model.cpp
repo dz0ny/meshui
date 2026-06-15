@@ -2,7 +2,10 @@
 #include <freertos/FreeRTOS.h>
 #include <time.h>
 #include <sys/time.h>
+#include <math.h>
 #include "model.h"
+#include "trail_store.h"
+#include "util/text_filter.h"
 #include "board.h"
 #include "mesh/mesh_bridge.h"
 #include "mesh/mesh_task.h"
@@ -16,10 +19,12 @@ namespace model {
 GPS     gps = {};
 Battery battery = {};
 Mesh    mesh = {};
+TrailStore trail;
 Clock   clock = {};
 ContactEntry contacts[MAX_CONTACT_ENTRIES] = {};
 int contact_count = 0;
 uint32_t contacts_revision = 0;
+uint32_t epoch_now = 0;
 DiscoveryEntry discovery[MAX_DISCOVERY_ENTRIES] = {};
 int discovery_count = 0;
 uint32_t discovery_revision = 0;
@@ -27,6 +32,9 @@ TelemetryEntry telemetry[MAX_TELEMETRY_ENTRIES] = {};
 uint32_t telemetry_revision = 0;
 TraceEntry traces[MAX_TRACE_ENTRIES] = {};
 uint32_t trace_revision = 0;
+LivePosition live_positions[MAX_LIVE_POSITIONS] = {};
+int live_position_count = 0;
+uint32_t live_position_revision = 0;
 static portMUX_TYPE dirty_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t dirty_flags = DIRTY_NONE;
 static uint32_t telemetry_seq = 0;
@@ -227,6 +235,10 @@ void refresh_discovery() {
 void ingest_bridge_events() {
     mesh::bridge::MessageIn message = {};
     while (mesh::bridge::pop_message(message)) {
+        // Strip emoji from received text/sender — the e-ink fonts can't render
+        // them, so they'd otherwise show as blank boxes.
+        util::strip_emoji_inplace(message.sender_name);
+        util::strip_emoji_inplace(message.text);
         if (messages && message_count < MAX_STORED_MESSAGES) {
             auto& msg = messages[message_count];
             if (message.sender_name[0]) strncpy(msg.sender, message.sender_name, sizeof(msg.sender) - 1);
@@ -234,6 +246,7 @@ void ingest_bridge_events() {
             msg.hour = clock.hour;
             msg.minute = clock.minute;
             msg.is_self = false;
+            msg.channel_idx = message.channel_idx;
             message_count++;
         }
 
@@ -271,9 +284,40 @@ void ingest_bridge_events() {
         trace_revision++;
     }
 
+    mesh::bridge::PositionUpdate position = {};
+    while (mesh::bridge::pop_position(position)) {
+        upsert_live_position(position.pub_key_prefix, position.name,
+                             position.lat_e6, position.lon_e6, position.timestamp,
+                             position.speed_kmh);
+    }
+
     if (mesh::bridge::take_discovery_changed()) {
         refresh_discovery();
     }
+}
+
+void upsert_live_position(const uint8_t* prefix6, const char* name,
+                          int32_t lat_e6, int32_t lon_e6, uint32_t timestamp,
+                          uint8_t speed_kmh) {
+    int slot = -1;
+    for (int i = 0; i < live_position_count; i++) {
+        if (memcmp(live_positions[i].pub_key_prefix, prefix6, 6) == 0) { slot = i; break; }
+    }
+    if (slot < 0) {
+        if (live_position_count < MAX_LIVE_POSITIONS) {
+            slot = live_position_count++;
+        } else {  // table full — evict the stalest entry
+            slot = 0;
+            for (int i = 1; i < live_position_count; i++)
+                if (live_positions[i].timestamp < live_positions[slot].timestamp) slot = i;
+        }
+        memset(&live_positions[slot], 0, sizeof(LivePosition));
+        memcpy(live_positions[slot].pub_key_prefix, prefix6, 6);
+    }
+    LivePosition& p = live_positions[slot];
+    p.lat_e6 = lat_e6; p.lon_e6 = lon_e6; p.timestamp = timestamp; p.speed_kmh = speed_kmh; p.valid = true;
+    if (name && name[0]) { strncpy(p.name, name, sizeof(p.name) - 1); p.name[sizeof(p.name) - 1] = 0; }
+    live_position_revision++;
 }
 
 const ContactEntry* find_contact_by_prefix(const uint8_t* prefix, int prefix_len) {
@@ -296,6 +340,112 @@ const TraceEntry* find_trace(uint32_t tag) {
     return idx >= 0 ? &traces[idx] : nullptr;
 }
 
+// Local great-circle helpers. We can't reuse ui::geo (geo_utils.h) here because
+// board.h pulls in <Arduino.h>, whose DEG_TO_RAD macro would clobber the token
+// inside that namespace. Use a private constant the macro can't touch.
+namespace {
+constexpr double kDegToRad = 0.017453292519943295;
+
+double great_circle_m(double la1, double lo1, double la2, double lo2) {
+    double dLat = (la2 - la1) * kDegToRad;
+    double dLon = (lo2 - lo1) * kDegToRad;
+    double a = sin(dLat / 2) * sin(dLat / 2) +
+               cos(la1 * kDegToRad) * cos(la2 * kDegToRad) *
+               sin(dLon / 2) * sin(dLon / 2);
+    return 6371000.0 * 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
+}
+
+double course_deg(double la1, double lo1, double la2, double lo2) {
+    double dLon = (lo2 - lo1) * kDegToRad;
+    double y = sin(dLon) * cos(la2 * kDegToRad);
+    double x = cos(la1 * kDegToRad) * sin(la2 * kDegToRad) -
+               sin(la1 * kDegToRad) * cos(la2 * kDegToRad) * cos(dLon);
+    return fmod(atan2(y, x) * (180.0 / M_PI) + 360.0, 360.0);
+}
+
+// --- Fast-GPS beacon schedule (mirror of MyMesh::maybeSendFastGpsUpdate) -----
+// The trail sampler reuses the *exact* decision the mesh core uses to emit a
+// fast-GPS beacon, so the breadcrumb track visualises precisely what would be
+// transmitted: a 10 m movement gate, a speed-aware moving interval, and a
+// stationary backoff that doubles 60 s → 1024 s while parked. Keep these
+// constants in lock-step with the FAST_GPS_* defines in MyMesh.cpp.
+constexpr double   kFastGpsMinMovementM        = 10.0;
+constexpr uint32_t kFastGpsStationaryBaseMs    = 60UL * 1000UL;
+constexpr uint32_t kFastGpsStationaryMaxMs     = 1024UL * 1000UL;
+constexpr double   kFastGpsSpeedIdleMaxMps     = 0.75;
+constexpr double   kFastGpsSpeedWalkMaxMps     = 1.8;
+constexpr double   kFastGpsSpeedFastMaxMps     = 4.0;
+constexpr uint32_t kFastGpsWalkIntervalMs      = 30UL * 1000UL;
+constexpr uint32_t kFastGpsFastIntervalMs      = 15UL * 1000UL;
+constexpr uint32_t kFastGpsVeryFastIntervalMs  = 5UL * 1000UL;
+
+uint32_t fast_gps_moving_interval_ms(double speed_mps) {
+    if (speed_mps < kFastGpsSpeedIdleMaxMps) return kFastGpsStationaryBaseMs;
+    if (speed_mps < kFastGpsSpeedWalkMaxMps) return kFastGpsWalkIntervalMs;
+    if (speed_mps < kFastGpsSpeedFastMaxMps) return kFastGpsFastIntervalMs;
+    return kFastGpsVeryFastIntervalMs;
+}
+} // namespace
+
+// Derive ground speed (km/h) and course-over-ground from the displacement
+// between successive valid fixes. The LocationProvider abstraction doesn't
+// expose GPS-reported speed, so we integrate position ourselves. A small
+// displacement gate rejects the few-metre horizontal jitter of a parked
+// receiver; a longer timeout lets a genuinely stationary device decay to 0.
+static void update_speed_heading() {
+    static double   prev_lat = 0, prev_lng = 0;
+    static uint32_t prev_ms = 0;
+    static bool     prev_valid = false;
+
+    if (!gps.has_fix) {
+        prev_valid = false;
+        gps.speed_kmh = 0.0;
+        gps.heading_valid = false;
+        return;
+    }
+
+    uint32_t now_ms = millis();
+    if (!prev_valid) {
+        prev_lat = gps.lat; prev_lng = gps.lng; prev_ms = now_ms;
+        prev_valid = true;
+        return;
+    }
+
+    double   dist_m = great_circle_m(prev_lat, prev_lng, gps.lat, gps.lng);
+    uint32_t dt_ms  = now_ms - prev_ms;
+    const double GATE_M = 5.0;  // ~horizontal noise of a good fix
+
+    if (dist_m >= GATE_M && dt_ms >= 1000) {
+        double inst_kmh = (dist_m / 1000.0) / ((double)dt_ms / 3600000.0);
+        if (inst_kmh <= 300.0) {  // reject NMEA glitch jumps
+            // Light EWMA — sparse updates, so weight the new sample heavily.
+            gps.speed_kmh = gps.speed_kmh * 0.4 + inst_kmh * 0.6;
+            gps.heading_deg = course_deg(prev_lat, prev_lng, gps.lat, gps.lng);
+            gps.heading_valid = true;
+        }
+        prev_lat = gps.lat; prev_lng = gps.lng; prev_ms = now_ms;
+    } else if (dt_ms >= 8000) {
+        // Stayed inside the gate for a while → parked. Decay to zero and
+        // re-baseline so accumulated jitter doesn't later read as motion.
+        gps.speed_kmh = 0.0;
+        prev_lat = gps.lat; prev_lng = gps.lng; prev_ms = now_ms;
+    }
+    // else: below gate but recent — keep the old baseline so slow walking
+    // accumulates enough displacement to cross GATE_M on a later call.
+}
+
+// Local GPS-read cadence only. This does NOT drive any LoRa transmission — the
+// fast-GPS position beacon has its own speed-aware, rate-limited schedule in
+// MyMesh (min 5 s on air). 2 s is the floor here so we never poll per-second.
+uint32_t gps_update_interval_ms() {
+    if (!gps.has_fix) return 5000;   // searching — moderate poll
+    double v = gps.speed_kmh;
+    if (v >= 30.0) return 2000;      // driving fast
+    if (v >= 10.0) return 3000;      // cycling / city driving
+    if (v >= 3.0)  return 5000;      // walking
+    return 10000;                    // stationary → slow, save power
+}
+
 void update_gps() {
     bool prev_has_fix = gps.has_fix;
     bool prev_module_ok = gps.module_ok;
@@ -312,9 +462,65 @@ void update_gps() {
         }
         gps.satellites = loc->satellitesCount();
         gps.status_text = gps.has_fix ? "Fix OK" : "Searching...";
+
+        update_speed_heading();
+
+        // GPS breadcrumb trail sampling — runs in the background whenever
+        // tracking is active, independent of the current screen. We store a
+        // point on exactly the same schedule the mesh core uses to *transmit* a
+        // fast-GPS beacon (10 m movement gate + speed-aware moving interval +
+        // stationary 60→1024 s backoff), so the rendered track is a faithful
+        // simulation of what actually goes out over the air.
+        if (trail.isActive() && gps.has_fix) {
+            static bool     fg_sent_valid = false;
+            static double   fg_last_lat = 0, fg_last_lng = 0;
+            static uint32_t fg_last_at_ms = 0;
+            static uint32_t fg_next_stationary_at = 0;
+            static uint32_t fg_stationary_interval_ms = kFastGpsStationaryBaseMs;
+
+            uint32_t now_ms = millis();
+            bool should_store    = !fg_sent_valid;
+            bool reset_backoff   = should_store;
+            if (!should_store) {
+                double dist_m = great_circle_m(fg_last_lat, fg_last_lng, gps.lat, gps.lng);
+                if (dist_m > kFastGpsMinMovementM) {
+                    if (fg_last_at_ms != 0 && now_ms > fg_last_at_ms) {
+                        uint32_t elapsed_ms = now_ms - fg_last_at_ms;
+                        double speed_mps = (dist_m * 1000.0) / (double)elapsed_ms;
+                        should_store = elapsed_ms >= fast_gps_moving_interval_ms(speed_mps);
+                    }
+                    if (should_store) reset_backoff = true;
+                } else if (fg_next_stationary_at != 0 &&
+                           (int32_t)(now_ms - fg_next_stationary_at) >= 0) {
+                    should_store = true;   // parked beacon keep-alive
+                }
+            }
+
+            if (should_store) {
+                time_t now = 0;
+                time(&now);
+                trail.addPoint((int32_t)loc->getLatitude(),
+                               (int32_t)loc->getLongitude(),
+                               (uint32_t)now,
+                               0);  // gate already enforced by the beacon schedule
+                fg_sent_valid = true;
+                fg_last_lat = gps.lat; fg_last_lng = gps.lng;
+                fg_last_at_ms = now_ms;
+                if (reset_backoff) {
+                    fg_stationary_interval_ms = kFastGpsStationaryBaseMs;
+                } else if (fg_stationary_interval_ms < kFastGpsStationaryMaxMs) {
+                    fg_stationary_interval_ms *= 2;
+                    if (fg_stationary_interval_ms > kFastGpsStationaryMaxMs)
+                        fg_stationary_interval_ms = kFastGpsStationaryMaxMs;
+                }
+                fg_next_stationary_at = now_ms + fg_stationary_interval_ms;
+            }
+        }
     } else {
         gps.module_ok = false;
         gps.status_text = "No Module";
+        gps.speed_kmh = 0.0;
+        gps.heading_valid = false;
     }
 
     // Sync hardware RTC so it persists across reboots (e-paper board only).
@@ -403,6 +609,7 @@ void update_clock() {
     // Read UTC from ESP32 system clock (seeded from hardware RTC at boot, updated by GPS)
     time_t now;
     time(&now);
+    if (now > 1700000000) epoch_now = (uint32_t)now;   // valid epoch only
     struct tm utc;
     gmtime_r(&now, &utc);
 
@@ -517,6 +724,7 @@ void delete_message(int idx) {
 
 void note_incoming_message(const char* from_name, const char* text) {
     sleep_cfg.unread_messages++;
+    note_contact_unread(from_name);   // per-contact tally for the Team screen badge
     if (from_name) {
         strncpy(sleep_cfg.last_sender, from_name, sizeof(sleep_cfg.last_sender) - 1);
         sleep_cfg.last_sender[sizeof(sleep_cfg.last_sender) - 1] = 0;

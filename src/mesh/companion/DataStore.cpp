@@ -232,6 +232,9 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
     if (file.available() >= (int)sizeof(_prefs.fast_gps_channel_idx)) {
       file.read((uint8_t *)&_prefs.fast_gps_channel_idx, sizeof(_prefs.fast_gps_channel_idx)); // 90
     }
+    if (file.available() >= (int)sizeof(_prefs.fast_gps_region)) {
+      file.read((uint8_t *)&_prefs.fast_gps_region, sizeof(_prefs.fast_gps_region)); // 91
+    }
 
     file.close();
   }
@@ -271,6 +274,7 @@ void DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_
     file.write((uint8_t *)&_prefs.autoadd_max_hops, sizeof(_prefs.autoadd_max_hops));       // 88
     file.write((uint8_t *)&_prefs.rx_boosted_gain, sizeof(_prefs.rx_boosted_gain)); // 89
     file.write((uint8_t *)&_prefs.fast_gps_channel_idx, sizeof(_prefs.fast_gps_channel_idx)); // 90
+    file.write((uint8_t *)&_prefs.fast_gps_region, sizeof(_prefs.fast_gps_region)); // 91
 
     file.close();
   }

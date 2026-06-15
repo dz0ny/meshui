@@ -297,7 +297,8 @@ static void on_ping(lv_event_t* e) {
     ui::screen_mgr::push(SCREEN_PING, true);
 }
 
-static void create(lv_obj_t* parent) {
+static void create(ui::kit::Handle parent_kit) {
+    lv_obj_t* parent = (lv_obj_t*)parent_kit;
     scr = parent;
     bool is_existing = has_pubkey && mesh::task::is_contact(contact_pubkey);
     contact_is_favorite = is_existing && mesh::task::is_favorite(contact_pubkey);

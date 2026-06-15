@@ -3,6 +3,7 @@
 #include <Arduino.h> // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/TxtDataHelpers.h>
+#include <SHA256.h>
 #include <limits.h>
 #include <math.h>
 #include "../mesh_bridge.h"
@@ -136,8 +137,41 @@
 
 #define MAX_SIGN_DATA_LEN               (8 * 1024) // 8K
 #define FAST_GPS_CHANNEL_DISABLED       0xFF
-#define FAST_GPS_PAYLOAD_LEN            19
+// Payload: [0]=MAGIC, [1..6]=sender pub_key prefix, [7..10]=lat_e6, [11..14]=lon_e6,
+// [15]=ground speed (km/h, clamped 0..255). Receiver stamps its own local RX time.
+#define FAST_GPS_PAYLOAD_LEN            16
 #define FAST_GPS_MAGIC                  0x47
+
+// Region scoping for fast-GPS beacons. Index 0 = unscoped (plain flood, as before).
+// 1..N are public hashtag regions the Slovenian mesh repeaters already honour; the
+// transport key is the publicly-derivable SHA256("#" + name), so no repeater config
+// or firmware change is needed — only repeaters carrying the matching region forward
+// the scoped flood, which keeps these frequent beacons off the rest of the mesh.
+#define FAST_GPS_REGION_UNSCOPED        0
+static const char* const FAST_GPS_REGION_NAMES[] = { NULL, "si", "si-not", "si-dol", "si-gor" };
+#define FAST_GPS_REGION_COUNT  ((uint8_t)(sizeof(FAST_GPS_REGION_NAMES) / sizeof(FAST_GPS_REGION_NAMES[0])))
+
+// Derive the transport key for a fast-GPS region index into `out`. Unscoped / out of
+// range => a null key (caller floods un-scoped). Mirrors RegionMap auto-hashtag keys:
+// key = SHA256("#<name>"), matching what region-aware repeaters compute.
+static void fastGpsRegionKey(uint8_t region_idx, TransportKey& out) {
+  if (region_idx == FAST_GPS_REGION_UNSCOPED || region_idx >= FAST_GPS_REGION_COUNT) {
+    memset(out.key, 0, sizeof(out.key));
+    return;
+  }
+  char tmp[40];
+  tmp[0] = '#';
+  StrHelper::strncpy(&tmp[1], FAST_GPS_REGION_NAMES[region_idx], sizeof(tmp) - 1);
+  SHA256 sha;
+  sha.update((const uint8_t*)tmp, strlen(tmp));
+  sha.finalize(out.key, sizeof(out.key));
+}
+
+uint8_t MyMesh::fastGpsRegionCount() { return FAST_GPS_REGION_COUNT; }
+const char* MyMesh::fastGpsRegionName(uint8_t idx) {
+  if (idx == FAST_GPS_REGION_UNSCOPED || idx >= FAST_GPS_REGION_COUNT) return "";
+  return FAST_GPS_REGION_NAMES[idx];
+}
 #define FIXED_GPS_INTERVAL_SECONDS      5UL
 #define FAST_GPS_MIN_MOVEMENT_METERS    10.0
 #define FAST_GPS_STATIONARY_BASE_INTERVAL_MS  (60UL * 1000UL)
@@ -149,6 +183,17 @@
 #define FAST_GPS_WALK_INTERVAL_MS             (30UL * 1000UL)
 #define FAST_GPS_FAST_INTERVAL_MS             (15UL * 1000UL)
 #define FAST_GPS_VERY_FAST_INTERVAL_MS        (5UL * 1000UL)
+
+// Proximity-based repeat suppression. When a group (channel) packet arrives from
+// a node that is physically right next to us there is no value in repeating it —
+// anyone our repeat could reach almost certainly already heard the original. We
+// detect "very close" two ways (either is enough to suppress):
+//   - link quality: a very strong RSSI or high SNR on the received packet
+//   - geography: the sender's advertised GPS position is within ~100 m of ours
+// Only group traffic is gated; routed/direct forwarding is untouched.
+#define NEARBY_RSSI_DBM                       (-50)   // RSSI at/above this == very close
+#define NEARBY_SNR_DB                         (9.0f)  // SNR  at/above this == very close
+#define NEARBY_DISTANCE_METERS                (100.0) // GPS distance below this == very close
 
 // Auto-add config bitmask
 // Bit 0: If set, overwrite oldest non-favourite contact when contacts file is full
@@ -527,7 +572,38 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
 }
 
 bool MyMesh::allowPacketForward(const mesh::Packet* packet) {
-  return _prefs.client_repeat != 0;
+  if (_prefs.client_repeat == 0) return false;
+
+  // Client-repeat is a light-touch leaf repeater: only relay the packet types
+  // worth re-flooding — direct text messages, group/channel text & data, acks,
+  // and adverts. Everything else (paths, requests, responses, traces, control,
+  // ...) is dropped.
+  uint8_t t = packet->getPayloadType();
+  switch (t) {
+    case PAYLOAD_TYPE_TXT_MSG:
+    case PAYLOAD_TYPE_GRP_TXT:
+    case PAYLOAD_TYPE_GRP_DATA:
+    case PAYLOAD_TYPE_ACK:
+    case PAYLOAD_TYPE_ADVERT:
+      break;
+    default:
+      return false;
+  }
+
+  // Don't repeat a group packet whose signal says the sender is right next to us.
+  // (Geographic proximity — sender GPS within NEARBY_DISTANCE_METERS — is handled
+  // separately in onChannelDataRecv via markDoNotRetransmit, since it needs the
+  // decrypted payload.) This runs synchronously inside onRecvPacket, so the radio's
+  // last-RSSI still reflects this very packet.
+  if (t == PAYLOAD_TYPE_GRP_TXT || t == PAYLOAD_TYPE_GRP_DATA) {
+    int   rssi = (int)radio_driver.getLastRSSI();
+    float snr  = packet->getSNR();
+    if (rssi >= NEARBY_RSSI_DBM || snr >= NEARBY_SNR_DB) {
+      MESH_DEBUG_PRINTLN("allowPacketForward: suppress nearby group pkt rssi=%d snr=%d", rssi, (int)snr);
+      return false;
+    }
+  }
+  return true;
 }
 
 void MyMesh::sendFloodScoped(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t delay_millis) {
@@ -613,10 +689,60 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   if (getChannel(channel_idx, channel_details)) {
     channel_name = channel_details.name;
   }
-  if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len);
+  if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len, channel_idx);
 }
 
-// onChannelDataRecv removed — no longer in MeshCore base class
+void MyMesh::onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint16_t data_type,
+                               const uint8_t *data, size_t data_len) {
+#if ENV_INCLUDE_GPS == 1
+  // Geographic repeat suppression for fast-GPS position beacons (see
+  // maybeSendFastGpsUpdate for the layout: MAGIC, 6-byte key prefix, lat_e6,
+  // lon_e6, speed). If the sender is within NEARBY_DISTANCE_METERS of our own
+  // fix the beacon carries no new neighbourhood info, so flag it do-not-retransmit.
+  // This runs before routeRecvPacket() decides whether to flood it onward.
+  if (data_type == DATA_TYPE_DEV && data_len >= FAST_GPS_PAYLOAD_LEN && data[0] == FAST_GPS_MAGIC) {
+    const uint8_t *key_prefix = &data[1];   // 6-byte sender pub-key prefix
+    int32_t lat_e6, lon_e6;
+    memcpy(&lat_e6, &data[7], 4);
+    memcpy(&lon_e6, &data[11], 4);
+    uint8_t speed_kmh = data[15];
+
+    // Publish the sender's position to the UI (Map / compass screens). Resolve a
+    // friendly name from our contacts by matching the pub-key prefix; leave it
+    // empty if unknown (the UI falls back to a hex label). The beacon carries no
+    // timestamp — stamp our own RX time so "most recently heard" ordering works.
+    mesh::bridge::PositionUpdate pu = {};
+    memcpy(pu.pub_key_prefix, key_prefix, 6);
+    pu.lat_e6 = lat_e6;
+    pu.lon_e6 = lon_e6;
+    pu.timestamp = getRTCClock()->getCurrentTime();
+    pu.speed_kmh = speed_kmh;
+    ContactsIterator iter;
+    ContactInfo ci;
+    while (iter.hasNext(this, ci)) {
+      if (memcmp(ci.id.pub_key, key_prefix, 6) == 0) {
+        strncpy(pu.name, ci.name, sizeof(pu.name) - 1);
+        break;
+      }
+    }
+    mesh::bridge::push_position(pu);
+
+    // Geographic repeat suppression: if the sender is within
+    // NEARBY_DISTANCE_METERS of our own fix the beacon carries no new
+    // neighbourhood info, so flag it do-not-retransmit before routeRecvPacket().
+    LocationProvider *loc = sensors.getLocationProvider();
+    if (loc != NULL && loc->isValid()) {
+      double dist_m = calcFastGpsDistanceMeters(lat_e6, lon_e6,
+                                                (int32_t)loc->getLatitude(),
+                                                (int32_t)loc->getLongitude());
+      if (dist_m <= NEARBY_DISTANCE_METERS) {
+        MESH_DEBUG_PRINTLN("onChannelDataRecv: suppress nearby GPS beacon dist=%dm", (int)dist_m);
+        pkt->markDoNotRetransmit();
+      }
+    }
+  }
+#endif
+}
 
 uint8_t MyMesh::onContactRequest(const ContactInfo &contact, uint32_t sender_timestamp, const uint8_t *data,
                                  uint8_t len, uint8_t *reply) {
@@ -880,6 +1006,11 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _gps_last_fix_lat_e6 = 0;
   _gps_last_fix_lon_e6 = 0;
   _gps_last_fix_timestamp = 0;
+  _gps_speed_kmh = 0.0;
+  _gps_speed_prev_valid = false;
+  _gps_speed_prev_lat_e6 = 0;
+  _gps_speed_prev_lon_e6 = 0;
+  _gps_speed_prev_ms = 0;
   memset(advert_paths, 0, sizeof(advert_paths));
   memset(send_scope.key, 0, sizeof(send_scope.key));
 
@@ -895,6 +1026,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.gps_enabled = 0;       // GPS disabled by default
   _prefs.gps_interval = FIXED_GPS_INTERVAL_SECONDS;
   _prefs.fast_gps_channel_idx = FAST_GPS_CHANNEL_DISABLED;
+  _prefs.fast_gps_region = FAST_GPS_REGION_UNSCOPED;
   //_prefs.rx_delay_base = 10.0f;  enable once new algo fixed
 #if defined(USE_SX1262) || defined(USE_SX1268)
 #ifdef SX126X_RX_BOOSTED_GAIN
@@ -1033,6 +1165,35 @@ void MyMesh::updateGpsStatusCache() {
   _gps_last_fix_lat_e6 = (int32_t)location->getLatitude();
   _gps_last_fix_lon_e6 = (int32_t)location->getLongitude();
 
+  // Ground speed from successive fixes. A small displacement gate rejects the
+  // few-metre jitter of a parked receiver; a longer timeout decays a genuinely
+  // stationary device to zero. Mirrors the UI-core derivation in model.cpp.
+  unsigned long now_ms = futureMillis(0);
+  if (!_gps_speed_prev_valid) {
+    _gps_speed_prev_lat_e6 = _gps_last_fix_lat_e6;
+    _gps_speed_prev_lon_e6 = _gps_last_fix_lon_e6;
+    _gps_speed_prev_ms = now_ms;
+    _gps_speed_prev_valid = true;
+  } else {
+    double dist_m = calcFastGpsDistanceMeters(_gps_speed_prev_lat_e6, _gps_speed_prev_lon_e6,
+                                              _gps_last_fix_lat_e6, _gps_last_fix_lon_e6);
+    unsigned long dt_ms = now_ms - _gps_speed_prev_ms;
+    if (dist_m >= 5.0 && dt_ms >= 1000) {
+      double inst_kmh = (dist_m / 1000.0) / ((double)dt_ms / 3600000.0);
+      if (inst_kmh <= 300.0) {  // reject NMEA glitch jumps
+        _gps_speed_kmh = _gps_speed_kmh * 0.4 + inst_kmh * 0.6;
+      }
+      _gps_speed_prev_lat_e6 = _gps_last_fix_lat_e6;
+      _gps_speed_prev_lon_e6 = _gps_last_fix_lon_e6;
+      _gps_speed_prev_ms = now_ms;
+    } else if (dt_ms >= 8000) {  // parked: decay to zero and re-baseline
+      _gps_speed_kmh = 0.0;
+      _gps_speed_prev_lat_e6 = _gps_last_fix_lat_e6;
+      _gps_speed_prev_lon_e6 = _gps_last_fix_lon_e6;
+      _gps_speed_prev_ms = now_ms;
+    }
+  }
+
   uint32_t timestamp = (uint32_t)location->getTimestamp();
   if (timestamp == 0) {
     timestamp = getRTCClock()->getCurrentTime();
@@ -1103,15 +1264,21 @@ void MyMesh::maybeSendFastGpsUpdate() {
   memcpy(&payload[1], self_id.pub_key, 6);
   memcpy(&payload[7], &lat_e6, 4);
   memcpy(&payload[11], &lon_e6, 4);
+  double spd = _gps_speed_kmh;
+  payload[15] = (uint8_t)(spd < 0 ? 0 : (spd > 255.0 ? 255 : (spd + 0.5)));
 
-  uint32_t timestamp = (uint32_t)location->getTimestamp();
-  if (timestamp == 0) {
-    timestamp = getRTCClock()->getCurrentTime();
-  }
-  memcpy(&payload[15], &timestamp, 4);
+  // Apply the configured region scope to *this beacon only*. sendFloodScoped()
+  // honours send_scope, but that's a global used by all group sends — so swap in
+  // the fast-GPS region key just for this send and restore it afterwards. A null
+  // key (unscoped) floods everywhere exactly as before. Single-threaded mesh loop,
+  // so no reentrancy concern.
+  TransportKey saved_scope = send_scope;
+  fastGpsRegionKey(_prefs.fast_gps_region, send_scope);
 
   uint8_t path[1] = { 0 };
-  if (sendGroupData(channel.channel, path, OUT_PATH_UNKNOWN, DATA_TYPE_DEV, payload, sizeof(payload))) {
+  bool sent = sendGroupData(channel.channel, path, OUT_PATH_UNKNOWN, DATA_TYPE_DEV, payload, sizeof(payload));
+  send_scope = saved_scope;
+  if (sent) {
     _fast_gps_last_sent_valid = true;
     _fast_gps_last_sent_lat_e6 = lat_e6;
     _fast_gps_last_sent_lon_e6 = lon_e6;

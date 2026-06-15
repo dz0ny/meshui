@@ -8,6 +8,7 @@
 
 #include "mesh_task.h"
 #include "mesh_bridge.h"
+#include "../util/text_filter.h"
 #include "../board.h"
 #include "../nvs_param.h"
 #include "companion/target.h"
@@ -164,12 +165,13 @@ bool is_ready() { return mesh_ready; }
 
 bool send_message(const char* recipient_prefix, const char* text) {
     if (!the_mesh_ptr || !mesh_mutex) return false;
+    char clean[160]; util::strip_emoji_copy(clean, sizeof(clean), text);
     bool ok = false;
     if (xSemaphoreTake(mesh_mutex, pdMS_TO_TICKS(500))) {
         ContactInfo* r = the_mesh_ptr->searchContactsByPrefix(recipient_prefix);
         if (r) {
             uint32_t ack, timeout;
-            int result = the_mesh_ptr->sendMessage(*r, rtc_clock.getCurrentTime(), 0, text, ack, timeout);
+            int result = the_mesh_ptr->sendMessage(*r, rtc_clock.getCurrentTime(), 0, clean, ack, timeout);
             ok = (result != MSG_SEND_FAILED);
         }
         xSemaphoreGive(mesh_mutex);
@@ -179,12 +181,13 @@ bool send_message(const char* recipient_prefix, const char* text) {
 
 bool send_to_name(const char* name, const char* text) {
     if (!the_mesh_ptr || !mesh_mutex || !name || !text) return false;
+    char clean[160]; util::strip_emoji_copy(clean, sizeof(clean), text);
     bool ok = false;
     if (xSemaphoreTake(mesh_mutex, pdMS_TO_TICKS(500))) {
         ContactInfo* r = the_mesh_ptr->searchContactsByPrefix(name);
         if (r) {
             uint32_t ack, timeout;
-            int result = the_mesh_ptr->sendMessage(*r, rtc_clock.getCurrentTime(), 0, text, ack, timeout);
+            int result = the_mesh_ptr->sendMessage(*r, rtc_clock.getCurrentTime(), 0, clean, ack, timeout);
             ok = (result != MSG_SEND_FAILED);
         }
         xSemaphoreGive(mesh_mutex);
@@ -198,13 +201,14 @@ bool send_public(const char* text) {
 
 bool send_channel(uint8_t channel_idx, const char* text) {
     if (!the_mesh_ptr || !mesh_mutex || !text) return false;
+    char clean[160]; util::strip_emoji_copy(clean, sizeof(clean), text);
     bool ok = false;
     if (xSemaphoreTake(mesh_mutex, pdMS_TO_TICKS(500))) {
         ChannelDetails ch;
         if (the_mesh_ptr->getChannel(channel_idx, ch) && ch.name[0]) {
             ok = the_mesh_ptr->sendGroupMessage(
                 rtc_clock.getCurrentTime(), ch.channel,
-                the_mesh_ptr->getNodeName(), text, strlen(text));
+                the_mesh_ptr->getNodeName(), clean, strlen(clean));
         }
         xSemaphoreGive(mesh_mutex);
     }
@@ -262,7 +266,7 @@ uint32_t get_packets_sent() {
 void set_node_name(const char* name) {
     if (!the_mesh_ptr) return;
     NodePrefs* p = the_mesh_ptr->getNodePrefs();
-    strncpy(p->node_name, name, sizeof(p->node_name) - 1);
+    util::strip_emoji_copy(p->node_name, sizeof(p->node_name), name);
     the_mesh_ptr->savePrefs();
 }
 
@@ -340,6 +344,17 @@ void set_advert_location(bool share) {
 bool get_advert_location() {
     if (!the_mesh_ptr) return false;
     return the_mesh_ptr->getNodePrefs()->advert_loc_policy != 0;
+}
+
+void set_client_repeat(bool enabled) {
+    if (!the_mesh_ptr) return;
+    the_mesh_ptr->getNodePrefs()->client_repeat = enabled ? 1 : 0;
+    the_mesh_ptr->savePrefs();
+}
+
+bool get_client_repeat() {
+    if (!the_mesh_ptr) return false;
+    return the_mesh_ptr->getNodePrefs()->client_repeat != 0;
 }
 
 // ---------- BLE ----------

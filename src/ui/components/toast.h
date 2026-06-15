@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lvgl.h"
+#include <stdint.h>
 
 namespace ui::toast {
 

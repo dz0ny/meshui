@@ -78,6 +78,8 @@ static const char* default_nav_title(int id) {
         case SCREEN_PING: return "Ping";
         case SCREEN_SETTINGS_DEBUG: return "Debug";
         case SCREEN_SETTINGS_DEVICE: return "Device";
+        case SCREEN_TRAIL: return "Trail";
+        case SCREEN_TEAM: return "Team";
         default: return "";
     }
 }
@@ -169,7 +171,7 @@ static lv_obj_t* create_default_screen(card_t* card) {
     // rebuild_nav runs from there; otherwise we build the default back-only nav below.
     // This avoids the double-rebuild when screens add action buttons.
     creating_card = card;
-    card->life->create(content);
+    card->life->create((ui::kit::Handle)content);
     creating_card = NULL;
 
     if (!card->nav_obj) {

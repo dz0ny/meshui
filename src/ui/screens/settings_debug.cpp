@@ -39,7 +39,8 @@ static void on_hit_area_toggle(lv_event_t* e) {
     ui::screen_mgr::reload_stack();
 }
 
-static void create(lv_obj_t* parent) {
+static void create(ui::kit::Handle parent_kit) {
+    lv_obj_t* parent = (lv_obj_t*)parent_kit;
     scr = parent;
 
     lv_obj_t* list = ui::nav::scroll_list(parent);

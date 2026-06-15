@@ -3,7 +3,7 @@
 #include "../ui_theme.h"
 #include "../ui_screen_mgr.h"
 #include "../ui_port.h"
-#include "../components/nav_button.h"
+#include "../kit/ui_kit.h"
 #include "../components/toast.h"
 #include "../../model.h"
 #include "../../board.h"
@@ -17,27 +17,25 @@
 
 namespace ui::screen::set_storage {
 
-static lv_obj_t* scr = NULL;
+using namespace ui::kit;
 
-static void on_back(lv_event_t* e) { ui::screen_mgr::pop(true); }
-
-static void on_clear_messages(lv_event_t* e) {
+static void on_clear_messages(void*) {
     model::message_count = 0;
     SD.remove("/messages.bin");
     ui::toast::show("Messages cleared");
 }
 
-static void on_clear_contacts(lv_event_t* e) {
+static void on_clear_contacts(void*) {
     mesh::task::clear_contacts();
     ui::toast::show("Contacts cleared");
 }
 
-static void on_clear_channels(lv_event_t* e) {
+static void on_clear_channels(void*) {
     mesh::task::clear_channels();
     ui::toast::show("Channels cleared");
 }
 
-static void on_factory_reset(lv_event_t* e) {
+static void on_factory_reset(void*) {
     mesh::task::flush_storage();
 
     // Shut down peripherals
@@ -62,20 +60,17 @@ static void on_factory_reset(lv_event_t* e) {
     ESP.restart();
 }
 
-static void create(lv_obj_t* parent) {
-    scr = parent;
-
-    lv_obj_t* list = ui::nav::scroll_list(parent);
-
-    ui::nav::toggle_item(list, "Messages", "Clear", on_clear_messages, NULL);
-    ui::nav::toggle_item(list, "Contacts", "Clear", on_clear_contacts, NULL);
-    ui::nav::toggle_item(list, "Channels", "Clear", on_clear_channels, NULL);
-    ui::nav::toggle_item(list, "Factory Reset", "Reset", on_factory_reset, NULL);
+static void create(Handle parent) {
+    Handle lst = list(parent);
+    toggle_item(lst, "Messages", "Clear", on_clear_messages, nullptr);
+    toggle_item(lst, "Contacts", "Clear", on_clear_contacts, nullptr);
+    toggle_item(lst, "Channels", "Clear", on_clear_channels, nullptr);
+    toggle_item(lst, "Factory Reset", "Reset", on_factory_reset, nullptr);
 }
 
 static void entry() {}
 static void exit_fn() {}
-static void destroy() { scr = NULL; }
+static void destroy() {}
 
 screen_lifecycle_t lifecycle = { create, entry, exit_fn, destroy };
 

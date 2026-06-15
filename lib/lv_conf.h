@@ -56,9 +56,18 @@
 #define LV_ANIM_DEF_TIME 200
 #define LV_USE_ANIM 1
 #else
-/** Disable animations entirely for e-paper */
+/** Disable animations entirely for e-paper.
+ *  Note: LV_USE_ANIM is NOT a real LVGL knob (no global anim kill-switch in v9),
+ *  so animations are still compiled in. The one that actually shows on e-ink is
+ *  the internal scroll-to-view (focus/tap brings a row into view): it animates
+ *  the scroll over SCROLL_ANIM_TIME_MIN..MAX (200..400 ms) and repaints every
+ *  intermediate step. Those macros are #ifndef-guarded in lv_obj_scroll.c, so
+ *  forcing them to 0 here makes all internal scrolling a single instant jump —
+ *  one refresh instead of an animation. */
 #define LV_ANIM_DEF_TIME 0
 #define LV_USE_ANIM 0
+#define SCROLL_ANIM_TIME_MIN 0
+#define SCROLL_ANIM_TIME_MAX 0
 #endif
 
 #define LV_USE_ASSERT_NULL          0
@@ -176,6 +185,14 @@
 #else
 /** Disable complex drawing features not needed on e-ink (shadows, gradients, etc.) */
 #define LV_USE_DRAW_SW_COMPLEX 0
+#endif
+
+#if !defined(BOARD_TDECK)
+/* E-ink renders 1-bit (I1): crisp black/white, 1/8th the draw buffer, and
+ * lets the panel use the fast mono DU waveform. L8 stays enabled so the Map /
+ * Trail off-screen canvases still composite onto the I1 screen. */
+#define LV_DRAW_SW_SUPPORT_I1   1
+#define LV_DRAW_SW_SUPPORT_L8   1
 #endif
 
 /** Disable image caching — redraws infrequently */

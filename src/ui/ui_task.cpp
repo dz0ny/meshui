@@ -39,6 +39,8 @@
 #include "screens/map.h"
 #include "screens/sensors.h"
 #include "screens/ping.h"
+#include "screens/trail.h"
+#include "screens/team.h"
 
 static void show_power_off_splash() {
     ui::statusbar::hide();
@@ -279,7 +281,8 @@ static void ui_task_fn(void* param) {
         }
         if (!is_locked && millis() > next_gps_update) {
             model::update_gps();
-            next_gps_update = millis() + 10000;
+            // Cadence tracks ground speed: ~1 Hz when moving fast, slow when parked.
+            next_gps_update = millis() + model::gps_update_interval_ms();
         }
         if (!is_locked && millis() > next_battery_update) {
             model::update_battery();
@@ -456,6 +459,8 @@ void start(int core) {
     ui::screen_mgr::register_screen(22, &ui::screen::settings_debug::lifecycle);
     ui::screen_mgr::register_screen(23, &ui::screen::settings_device::lifecycle);
     ui::screen_mgr::register_screen(24, &ui::screen::touch_debug::lifecycle);
+    ui::screen_mgr::register_screen(25, &ui::screen::trail::lifecycle);
+    ui::screen_mgr::register_screen(SCREEN_TEAM, &ui::screen::team::lifecycle);
     Serial.println("UI: switch to home...");
     ui::screen_mgr::switch_to(0, false);
 

@@ -84,6 +84,7 @@
 // ---------- Home screen ----------
 #define UI_HOME_NODE_Y       55
 #define UI_HOME_SHOW_NODE    1
+#define UI_HOME_CLOCK_INLINE 0
 #define UI_HOME_CLOCK_Y      100
 #define UI_HOME_DATE_Y       225
 #define UI_HOME_MENU_Y       340

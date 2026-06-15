@@ -6,23 +6,33 @@
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>
-#include <helpers/ESP32Board.h>
 #include <helpers/radiolib/CustomSX1262Wrapper.h>
 #include <helpers/sensors/EnvironmentSensorManager.h>
 #include <helpers/sensors/MicroNMEALocationProvider.h>
 
-// Custom board that reads battery from BQ27220 fuel gauge
-class T5ePaperBoard : public ESP32Board {
-public:
-    uint16_t getBattMilliVolts() override;
-    const char* getManufacturerName() const override { return "LilyGo T5-ePaper"; }
-};
-
-extern T5ePaperBoard mc_board;
-extern WRAPPER_CLASS radio_driver;
-extern ESP32RTCClock rtc_clock;
-extern EnvironmentSensorManager sensors;
-extern MicroNMEALocationProvider gps_provider;
+#if defined(BOARD_WIO_L1)
+  // nRF52 Wio Tracker L1
+  #include "WioTrackerL1Board.h"
+  #include <helpers/AutoDiscoverRTCClock.h>
+  extern WioTrackerL1Board mc_board;
+  extern WRAPPER_CLASS radio_driver;
+  extern AutoDiscoverRTCClock rtc_clock;
+  extern EnvironmentSensorManager sensors;
+  extern MicroNMEALocationProvider gps_provider;
+#else
+  // ESP32 boards (T5 e-paper / T-Deck)
+  #include <helpers/ESP32Board.h>
+  class T5ePaperBoard : public ESP32Board {
+  public:
+      uint16_t getBattMilliVolts() override;
+      const char* getManufacturerName() const override { return "LilyGo T5-ePaper"; }
+  };
+  extern T5ePaperBoard mc_board;
+  extern WRAPPER_CLASS radio_driver;
+  extern ESP32RTCClock rtc_clock;
+  extern EnvironmentSensorManager sensors;
+  extern MicroNMEALocationProvider gps_provider;
+#endif
 
 void rtc_init();   // call from board::init() before tasks start
 bool radio_init();

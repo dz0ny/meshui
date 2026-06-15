@@ -51,7 +51,7 @@ jobs:
           python -m pip install platformio esptool
 
       - name: Build firmware (all targets)
-        run: pio run -e t5-epaper -e tdeck
+        run: pio run -e t5-epaper -e tdeck -e wio-tracker-l1
 
       - name: Generate web flasher
         env:

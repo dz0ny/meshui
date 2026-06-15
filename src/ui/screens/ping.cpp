@@ -479,7 +479,8 @@ void set_contact(const char* name, int32_t gps_lat, int32_t gps_lon, uint8_t typ
     }
 }
 
-static void create(lv_obj_t* parent) {
+static void create(ui::kit::Handle parent_kit) {
+    lv_obj_t* parent = (lv_obj_t*)parent_kit;
     scr = parent;
     lbl_auto_action = ui::screen_mgr::set_nav_actions(
         auto_ping_enabled ? "Auto On" : "Auto Off", on_toggle_auto, NULL,

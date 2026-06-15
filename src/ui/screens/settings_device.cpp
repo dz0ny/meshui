@@ -1,8 +1,7 @@
 #include <Arduino.h>
 #include "settings_device.h"
-#include "../ui_theme.h"
 #include "../ui_screen_mgr.h"
-#include "../components/nav_button.h"
+#include "../kit/ui_kit.h"
 #include "../../board.h"
 #include "../../mesh/mesh_task.h"
 
@@ -10,35 +9,30 @@ extern void do_power_off();
 
 namespace ui::screen::settings_device {
 
-static lv_obj_t* scr = NULL;
+using namespace ui::kit;
 
-static void on_back(lv_event_t* e) { ui::screen_mgr::pop(true); }
-
-static void on_reboot(lv_event_t* e) {
+static void on_reboot(void*) {
     mesh::task::flush_storage();
     ESP.restart();
 }
 
-static void on_power_off(lv_event_t* e) { do_power_off(); }
+static void on_power_off(void*) { do_power_off(); }
 
-static void create(lv_obj_t* parent) {
-    scr = parent;
+static void create(Handle parent) {
+    Handle lst = list(parent);
 
-    lv_obj_t* list = ui::nav::scroll_list(parent);
+    menu_row(lst, "Reboot",    on_reboot,    nullptr);
+    menu_row(lst, "Power Off", on_power_off, nullptr);
 
-    ui::nav::menu_item(list, NULL, "Reboot", on_reboot, NULL);
-    ui::nav::menu_item(list, NULL, "Power Off", on_power_off, NULL);
-
-    lv_obj_t* ver = lv_label_create(list);
-    lv_obj_set_style_text_font(ver, UI_FONT_SMALL, LV_PART_MAIN);
-    lv_obj_set_style_text_color(ver, lv_color_hex(EPD_COLOR_TEXT), LV_PART_MAIN);
-    lv_label_set_text_fmt(ver, "FW: %s  HW: %s", T_PAPER_FW_VERSION, T_PAPER_HW_VERSION);
-    lv_obj_set_style_pad_top(ver, 20, LV_PART_MAIN);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "FW: %s  HW: %s", T_PAPER_FW_VERSION, T_PAPER_HW_VERSION);
+    Handle ver = label(lst, buf);
+    font(ver, Font::Small);
 }
 
 static void entry() {}
 static void exit_fn() {}
-static void destroy() { scr = NULL; }
+static void destroy() {}
 
 screen_lifecycle_t lifecycle = { create, entry, exit_fn, destroy };
 

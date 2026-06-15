@@ -33,4 +33,5 @@ struct NodePrefs {  // persisted to file
   uint8_t path_hash_mode;    // which path mode to use when sending
   uint8_t autoadd_max_hops;  // 0 = no limit, 1 = direct (0 hops), N = up to N-1 hops (max 64)
   uint8_t fast_gps_channel_idx; // 0xFF = disabled, otherwise a non-public channel index
+  uint8_t fast_gps_region;      // 0 = unscoped (flood everywhere); else index into FAST_GPS_REGION_NAMES
 };

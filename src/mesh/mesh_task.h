@@ -4,9 +4,19 @@
 
 namespace mesh::task {
 
+// Optional diagnostic hook: called with the name of each init step inside
+// start() *before* that step runs. The app installs a drawer that paints the
+// step onto the e-ink panel, so if a step hangs the frozen screen shows the
+// last step reached (capture-free boot diagnostic). Null => no-op.
+extern void (*diag_step)(const char* step);
+
 // Start the mesh networking task on the specified core.
 // Must be called after board::init() since it uses the SPI bus and LoRa radio.
 void start(int core);
+
+// nRF52 (single-core): run one mesh iteration from the main loop. Unused on
+// ESP32, which runs mesh on a pinned FreeRTOS task instead.
+void loop();
 
 // True once mesh init is complete (identity loaded, radio configured).
 bool is_ready();
@@ -43,6 +53,31 @@ uint32_t get_packets_sent();
 void push_all_contacts();
 int get_channels(ChannelEntry* dest, int max_num);
 
+// Fast GPS broadcast: periodically send our position to a group channel.
+// Channel 0xFF (FAST_GPS_DISABLED) = off; channel 0 (Public) is also treated as
+// disabled by the engine. Persists in NodePrefs.
+static const uint8_t FAST_GPS_DISABLED = 0xFF;
+uint8_t get_fast_gps_channel();
+void    set_fast_gps_channel(uint8_t channel_idx);
+
+// Region scope for fast-GPS beacons. Index 0 = unscoped (flood everywhere, as
+// before); 1..N are public hashtag regions (si, si-not, ...) that region-aware
+// repeaters confine the flood to. Persists in NodePrefs.
+uint8_t     get_fast_gps_region();
+void        set_fast_gps_region(uint8_t region_idx);
+uint8_t     fast_gps_region_count();             // number of options incl. unscoped
+const char* fast_gps_region_label(uint8_t idx);  // UI label ("Unscoped", "si", ...)
+
+// Buzzer (piezo) notification sounds. Persisted via NodePrefs.buzzer_quiet
+// (inverted: enabled == !quiet). No-op on boards without a buzzer.
+bool get_buzzer_enabled();
+void set_buzzer_enabled(bool enabled);
+
+// Active channel shown on the Messages screen. The chat screen filters its list
+// to messages tagged with this channel index. Persisted across reboots.
+uint8_t get_msg_channel();
+void    set_msg_channel(uint8_t channel_idx);
+
 // Discovery: get recently heard nodes (not yet contacts)
 struct DiscoveredNode {
     char name[32];
@@ -75,6 +110,11 @@ bool get_gps_enabled();
 void set_advert_location(bool share);
 bool get_advert_location();
 
+// Client repeat: when on, this node forwards (repeats) packets it hears,
+// acting as a lightweight repeater in addition to its client role.
+void set_client_repeat(bool enabled);
+bool get_client_repeat();
+
 // Node advertised location (from prefs)
 double get_node_lat();
 double get_node_lon();
@@ -85,6 +125,8 @@ void ble_disable();
 bool ble_is_enabled();
 void set_ble_pin(uint32_t pin);
 uint32_t get_ble_pin();
+// Generate a fresh random 6-digit BLE pairing PIN, persist it, and return it.
+uint32_t regen_ble_pin();
 
 // Toggle favorite flag on a contact (bit 0 of ContactInfo::flags)
 bool is_favorite(const uint8_t* pubkey_prefix);

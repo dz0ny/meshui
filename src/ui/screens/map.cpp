@@ -372,7 +372,8 @@ void process_events() {
     last_gps_lon = model::gps.lng;
 }
 
-static void create(lv_obj_t* parent) {
+static void create(ui::kit::Handle parent_kit) {
+    lv_obj_t* parent = (lv_obj_t*)parent_kit;
     scr = parent;
     lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
 
