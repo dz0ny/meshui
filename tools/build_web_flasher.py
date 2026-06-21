@@ -6,6 +6,7 @@ import argparse
 import html
 import shutil
 import subprocess
+import zipfile
 from pathlib import Path
 
 
@@ -51,9 +52,9 @@ TARGETS = [
         "env": "wio-tracker-l1",
         "slug": "wio-tracker-l1",
         "device_name": "Seeed Wio Tracker L1",
-        "flash_method": "uf2",
+        "flash_method": "web-serial-dfu",
         "chip_label": "nRF52840",
-        "description": "The Wio Tracker L1 is an nRF52840 mono e-ink tracker, so it flashes by drag-and-drop UF2 rather than Web Serial. Download the firmware below and copy it onto the bootloader drive — no toolchain required.",
+        "description": "The Wio Tracker L1 is an nRF52840 mono e-ink tracker. Double-tap RESET to enter the bootloader, then flash it straight from Chrome or Edge over Web Serial — no toolchain or drag-and-drop required. A UF2 download is provided as a fallback.",
         "product_url": None,
         "product_image": None,
         "screenshots": [],
@@ -130,9 +131,43 @@ def build_target_card(target: dict, version: str) -> str:
     if product_url:
         product_link = f'<a class="text-paper-accent underline decoration-1 underline-offset-2" href="{product_url}">Product Page</a>'
 
-    eyebrow = "UF2 Drag &amp; Drop" if method == "uf2" else "Browser Flasher"
-
+    eyebrow = "Browser Flasher"
     if method == "uf2":
+        eyebrow = "UF2 Drag &amp; Drop"
+    elif method == "web-serial-dfu":
+        eyebrow = "Web Serial Flasher"
+
+    if method == "web-serial-dfu":
+        bin_name = f"{slug}-{version}.bin"
+        dat_name = f"{slug}-{version}.dat"
+        uf2_name = f"{slug}-{version}.uf2"
+        bin_attr = html.escape(f"{slug}/{bin_name}", quote=True)
+        dat_attr = html.escape(f"{slug}/{dat_name}", quote=True)
+        uf2_href = html.escape(f"{slug}/{uf2_name}", quote=True)
+        action_html = f"""
+          <div
+            data-nrf-dfu
+            data-bin="{bin_attr}"
+            data-dat="{dat_attr}"
+            class="grid gap-3"
+          >
+            <div class="flex flex-wrap items-center gap-4">
+              <button data-nrf-connect class="inline-block border border-paper-line bg-paper-accent px-5 py-3 text-sm font-semibold text-paper-panel disabled:opacity-60">Connect &amp; Flash</button>
+              {product_link}
+            </div>
+            <progress data-nrf-progress hidden class="h-2 w-full"></progress>
+            <pre data-nrf-log hidden class="max-h-44 overflow-auto whitespace-pre-wrap border border-paper-line bg-[#fcfcfa] p-3 text-xs leading-5 text-paper-muted"></pre>
+          </div>
+          <div class="border border-paper-line bg-[#fcfcfa] p-4 text-sm leading-6 text-paper-muted">
+            <p class="font-semibold text-paper-text">Flash over Web Serial (Chrome/Edge)</p>
+            <ol class="mt-2 list-decimal space-y-1 pl-5">
+              <li>Connect the tracker to your computer with a USB data cable.</li>
+              <li>Double-tap the <strong>RESET</strong> button to enter the bootloader — a <code>TRACKER L1</code> drive appears.</li>
+              <li>Click <strong>Connect &amp; Flash</strong> and pick the tracker's serial port. Progress shows below.</li>
+            </ol>
+            <p class="mt-3">Prefer drag-and-drop? <a class="text-paper-accent underline decoration-1 underline-offset-2" href="{uf2_href}" download>Download the UF2</a> and copy it onto the <code>TRACKER L1</code> drive instead.</p>
+          </div>"""
+    elif method == "uf2":
         uf2_name = f"{slug}-{version}.uf2"
         href = html.escape(f"{slug}/{uf2_name}", quote=True)
         action_html = f"""
@@ -208,6 +243,7 @@ def build_page(version: str, repo_url: str) -> str:
       }};
     </script>
     <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+    <script type="module" src="nrf52-dfu.js"></script>
     <style>
       :root {{
         --esp-tools-button-color: #2b2b28;
@@ -235,10 +271,10 @@ def build_page(version: str, repo_url: str) -> str:
       </div>
 {cards}
       <div class="px-7 max-sm:px-5">
-        <p class="text-sm leading-6 text-paper-muted">Use a USB data cable. ESP32 boards (T5 ePaper, T-Deck) flash in-browser over Web Serial (Chrome/Edge); the nRF52 Wio Tracker L1 installs by copying its UF2 onto the bootloader drive.</p>
+        <p class="text-sm leading-6 text-paper-muted">Use a USB data cable and Chrome or Edge on desktop. ESP32 boards (T5 ePaper, T-Deck) flash in-browser over Web Serial with ESP Web Tools; the nRF52 Wio Tracker L1 flashes over Web Serial too — double-tap RESET into the bootloader first, or fall back to copying its UF2 onto the bootloader drive.</p>
         <ol class="list-decimal space-y-1 pl-5 text-sm leading-6 text-paper-muted mt-2">
           <li>Put the board in bootloader mode if the browser cannot detect it.</li>
-          <li>Choose erase when you want a clean install (Web Serial only).</li>
+          <li>Choose erase when you want a clean install (ESP32 Web Serial only).</li>
         </ol>
       </div>
     </main>
@@ -270,6 +306,28 @@ def main() -> None:
             uf2 = build_dir / "firmware.uf2"
             if not uf2.is_file():
                 raise FileNotFoundError(uf2)
+            shutil.copy2(uf2, target_dir / f"{slug}-{args.version}.uf2")
+        elif method == "web-serial-dfu":
+            # nRF52840: flash in-browser over Web Serial (legacy Nordic SLIP DFU,
+            # the protocol adafruit-nrfutil speaks). The browser flasher
+            # (nrf52-dfu.js) needs the application image + init packet, which the
+            # PlatformIO-produced firmware.zip (the adafruit-nrfutil DFU package)
+            # already contains. Extract them next to the page. Ship the UF2 too as
+            # a drag-and-drop fallback.
+            dfu_zip = build_dir / "firmware.zip"
+            uf2 = build_dir / "firmware.uf2"
+            for path in (dfu_zip, uf2):
+                if not path.is_file():
+                    raise FileNotFoundError(path)
+            with zipfile.ZipFile(dfu_zip) as zf:
+                with zf.open("firmware.bin") as src, open(
+                    target_dir / f"{slug}-{args.version}.bin", "wb"
+                ) as dst:
+                    shutil.copyfileobj(src, dst)
+                with zf.open("firmware.dat") as src, open(
+                    target_dir / f"{slug}-{args.version}.dat", "wb"
+                ) as dst:
+                    shutil.copyfileobj(src, dst)
             shutil.copy2(uf2, target_dir / f"{slug}-{args.version}.uf2")
         else:
             bootloader = build_dir / "bootloader.bin"
@@ -324,6 +382,13 @@ def main() -> None:
             img_path = assets_dir / name
             if img_path.is_file():
                 shutil.copy2(img_path, target_dir / name)
+
+    # Ship the Web Serial nRF52 DFU flasher module alongside the page.
+    if any(t.get("flash_method") == "web-serial-dfu" for t in TARGETS):
+        dfu_js = Path(__file__).resolve().parent / "web_flasher_assets" / "nrf52-dfu.js"
+        if not dfu_js.is_file():
+            raise FileNotFoundError(dfu_js)
+        shutil.copy2(dfu_js, output_dir / "nrf52-dfu.js")
 
     # Write the unified index page
     (output_dir / "index.html").write_text(build_page(args.version, args.repo_url), encoding="utf-8")
