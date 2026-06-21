@@ -58,6 +58,25 @@ static void feed_model() {
         model::gps.satellites  = loc->satellitesCount();
         model::gps.status_text = model::gps.has_fix ? "Fix OK" : "Searching";
 
+        // Sync the clock from GPS time the moment the receiver decodes it — even
+        // with a single satellite and before a position fix. The vendored provider
+        // only syncs the RTC once isValid() (a full fix), which can take minutes;
+        // message timestamps and beacon aging shouldn't wait that long for time
+        // that's available almost immediately.
+        {
+            static uint32_t next_time_sync_ms = 0;
+            if ((int32_t)(millis() - next_time_sync_ms) >= 0) {
+                next_time_sync_ms = millis() + 2000;
+                uint32_t gps_secs = (uint32_t)loc->getTimestamp();
+                if (gps_secs > 1700000000UL) {              // plausible epoch (>= 2023-11)
+                    uint32_t cur  = (uint32_t)rtc_clock.getCurrentTime();
+                    uint32_t diff = gps_secs > cur ? gps_secs - cur : cur - gps_secs;
+                    if (cur < 1700000000UL || diff > 2)     // clock unset or drifted >2 s
+                        rtc_clock.setCurrentTime(gps_secs);
+                }
+            }
+        }
+
         // Dead-reckoned heading (course over ground): the tracker has no
         // magnetometer, so derive our facing direction from how the fix moves.
         // Only update once we've travelled far enough for the bearing to be

@@ -84,6 +84,9 @@ void    set_msg_channel(uint8_t channel_idx);
 // and persists, after which the caller reboots.
 size_t profile_export(uint8_t* buf, size_t max);
 bool   profile_import(const uint8_t* buf, size_t len);
+// Counts applied by the most recent successful profile_import (-1 = none yet).
+int    last_import_channels();
+int    last_import_contacts();
 
 // Discovery: get recently heard nodes (not yet contacts)
 struct DiscoveredNode {

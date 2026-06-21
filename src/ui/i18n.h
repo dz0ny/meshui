@@ -93,7 +93,7 @@ inline const char* t(Str id) {
         "Baterija", "GPS info", "Mesh info",
         "Zaslon", "Bluetooth", "GPS nastav.", "Mesh nastav.", "Jezik",
         "Zasebnost", "GPS v oglasu", "Zvok", "Brencalo", "Obrni barve",
-        "Vklop", "Izklop", "OK", "Brez", "Samod.",
+        "Da", "Ne", "OK", "Brez", "Samod.",
         "GPS", "Modul", "RTC sinhr.",
         "Vozlisce", "Moc TX", "Deli GPS", "Ponovi", "Radio", "Statistika", "Sosedje",
         "Stanje", "S. sirina", "Z. dolzina", "Sateliti", "Visina", "Hitrost",

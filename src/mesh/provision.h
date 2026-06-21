@@ -20,6 +20,8 @@ void  loop();           // pump the active role
 void  reboot();         // leave provisioning mode (back to a normal boot)
 State state();
 int   progress();       // 0..100 for the current transfer
+int   bytes_done();     // bytes sent (Share) or received (Receive) so far
+int   bytes_total();    // total payload bytes for the current transfer
 
 // Receiver device picker: rather than auto-connecting to the strongest signal,
 // the scan collects nearby advertisers so the user can choose one. device_*()

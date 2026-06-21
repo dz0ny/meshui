@@ -286,6 +286,7 @@ void set_ble_pin(uint32_t pin) {
     the_mesh->getNodePrefs()->ble_pin = pin;
     the_mesh->savePrefs();
 }
+
 uint32_t get_ble_pin() {
     if (!the_mesh) return BLE_PIN_CODE;
     uint32_t pin = the_mesh->getNodePrefs()->ble_pin;
@@ -423,6 +424,18 @@ struct __attribute__((packed)) ProfileChannel {
     char    name[32];
     uint8_t secret[32];
 };
+struct __attribute__((packed)) ProfileContact {
+    uint8_t  pub_key[32];
+    char     name[32];
+    uint8_t  type;
+    uint8_t  flags;
+    uint8_t  out_path_len;
+    uint8_t  out_path[MAX_PATH_SIZE];
+    int32_t  gps_lat;
+    int32_t  gps_lon;
+    uint32_t last_advert_timestamp;
+    uint32_t lastmod;
+};
 
 int read_pref_byte(const char* path) {
     using namespace Adafruit_LittleFS_Namespace;
@@ -438,6 +451,12 @@ void write_pref_byte(const char* path, uint8_t v) {
     if (f) { f.write(&v, 1); f.close(); }
 }
 } // namespace
+
+// Applied by the most recent successful profile_import (-1 until one runs).
+static int g_import_channels = -1;
+static int g_import_contacts = -1;
+int last_import_channels() { return g_import_channels; }
+int last_import_contacts() { return g_import_contacts; }
 
 size_t profile_export(uint8_t* buf, size_t max) {
     if (!the_mesh || !buf) return 0;
@@ -473,6 +492,31 @@ size_t profile_export(uint8_t* buf, size_t max) {
         count++;
     }
     *count_at = count;
+
+    // Contacts (the address book of other nodes — NOT our identity). Copied so a
+    // freshly-provisioned unit inherits who we can talk to.
+    uint8_t* ccount_at = buf + off; off += 1;
+    uint8_t ccount = 0;
+    ContactsIterator iter = the_mesh->startContactsIterator();
+    ContactInfo c;
+    while (iter.hasNext(the_mesh, c)) {
+        if (off + sizeof(ProfileContact) > max) break;
+        ProfileContact pc = {};
+        memcpy(pc.pub_key, c.id.pub_key, sizeof(pc.pub_key));
+        memcpy(pc.name, c.name, sizeof(pc.name));
+        pc.type = c.type;
+        pc.flags = c.flags;
+        pc.out_path_len = c.out_path_len;
+        if (c.out_path_len <= MAX_PATH_SIZE)
+            memcpy(pc.out_path, c.out_path, c.out_path_len);
+        pc.gps_lat = c.gps_lat;
+        pc.gps_lon = c.gps_lon;
+        pc.last_advert_timestamp = c.last_advert_timestamp;
+        pc.lastmod = c.lastmod;
+        memcpy(buf + off, &pc, sizeof(pc)); off += sizeof(pc);
+        ccount++;
+    }
+    *ccount_at = ccount;
     return off;
 }
 
@@ -494,6 +538,7 @@ bool profile_import(const uint8_t* buf, size_t len) {
     p->client_repeat = fx.client_repeat;
     p->buzzer_quiet = fx.buzzer_quiet;
 
+    int applied_channels = 0;
     for (uint8_t i = 0; i < count; i++) {
         ProfileChannel pc;
         memcpy(&pc, buf + off, sizeof(pc)); off += sizeof(pc);
@@ -503,8 +548,45 @@ bool profile_import(const uint8_t* buf, size_t len) {
         ch.name[sizeof(ch.name) - 1] = 0;
         memcpy(ch.channel.secret, pc.secret, sizeof(ch.channel.secret));
         the_mesh->setChannel(pc.idx, ch);
+        applied_channels++;
     }
     store->saveChannels(the_mesh);   // MyMesh::saveChannels is private; go via the store
+    g_import_channels = applied_channels;
+    g_import_contacts = 0;
+
+    // Contacts: replace ours with the sharer's. Only apply when the blob actually
+    // carries a contact section (older/short blobs simply leave contacts alone).
+    if (off < len) {
+        uint8_t ccount = buf[off++];
+        if (off + (size_t)ccount * sizeof(ProfileContact) <= len) {
+            // Wipe existing contacts first so this is a clean replace, not a merge.
+            ContactInfo existing;
+            while (the_mesh->getNumContacts() > 0 && the_mesh->getContactByIdx(0, existing)) {
+                if (!the_mesh->removeContact(existing)) break;
+            }
+            for (uint8_t i = 0; i < ccount; i++) {
+                ProfileContact pc;
+                memcpy(&pc, buf + off, sizeof(pc)); off += sizeof(pc);
+                ContactInfo c = {};
+                c.id = mesh::Identity(pc.pub_key);
+                memcpy(c.name, pc.name, sizeof(c.name));
+                c.name[sizeof(c.name) - 1] = 0;
+                c.type = pc.type;
+                c.flags = pc.flags;
+                c.out_path_len = pc.out_path_len;
+                if (pc.out_path_len <= MAX_PATH_SIZE)
+                    memcpy(c.out_path, pc.out_path, pc.out_path_len);
+                c.gps_lat = pc.gps_lat;
+                c.gps_lon = pc.gps_lon;
+                c.last_advert_timestamp = pc.last_advert_timestamp;
+                c.lastmod = pc.lastmod;
+                the_mesh->addContact(c);
+            }
+            store->saveContacts(the_mesh);
+            g_import_contacts = ccount;
+        }
+    }
+
     the_mesh->savePrefs();
 
     write_pref_byte("/tz", (uint8_t)fx.tz_offset_hours);

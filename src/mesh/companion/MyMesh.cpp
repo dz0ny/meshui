@@ -203,6 +203,11 @@ const char* MyMesh::fastGpsRegionName(uint8_t idx) {
 #define FAST_GPS_STOP_DWELL_MS                (60UL * 1000UL) // sustained-near to declare stopped
 #define FAST_GPS_MOVE_EVAL_MS                 (1000UL)        // state-machine tick
 
+// Minimum satellites before a fix is trusted for sharing. A 2-3 sat fix wanders
+// hundreds of metres; require a solid constellation so we never beacon (or build
+// speed/anchor state from) a garbage position.
+#define FAST_GPS_MIN_SATS                     (5)
+
 // Proximity-based repeat suppression. When a group (channel) packet arrives from
 // a node that is physically right next to us there is no value in repeating it —
 // anyone our repeat could reach almost certainly already heard the original. We
@@ -1190,7 +1195,8 @@ void MyMesh::updateGpsStatusCache() {
   }
 
   LocationProvider *location = sensors.getLocationProvider();
-  if (location == NULL || !location->isValid()) {
+  if (location == NULL || !location->isValid() ||
+      location->satellitesCount() < FAST_GPS_MIN_SATS) {
     return;
   }
 
@@ -1300,7 +1306,8 @@ void MyMesh::maybeSendFastGpsUpdate() {
   }
 
   LocationProvider *location = sensors.getLocationProvider();
-  if (location == NULL || !location->isValid()) {
+  if (location == NULL || !location->isValid() ||
+      location->satellitesCount() < FAST_GPS_MIN_SATS) {
     resetFastGpsShareState();
     return;
   }

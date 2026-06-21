@@ -255,10 +255,43 @@ void canvas_flush(Handle) {}   // drawn during render()
 // ---- message list (minimal: a vertical stack of "sender: text" lines) ------
 Handle msglist(Handle parent) { Node* n = alloc(K_CONT); n->lay = L_COL; n->w_spec = pct(100); n->pad = 2; add_child(N(parent), n); return (Handle)n; }
 void   msg_append(Handle l, const char* sender, const char* text, bool is_self, int) {
-    char line[40];
-    snprintf(line, sizeof(line), "%s: %s", is_self ? "me" : (sender ? sender : "?"), text ? text : "");
-    Handle row_ = label(l, line);
-    N(row_)->font = Font::Title;   // larger, readable chat text (2x the 5x7 base)
+    // Sender as a small header line on top, then the message body word-wrapped
+    // full-width below in the 1x font. No inline "sender:"/channel prefix, and a
+    // small font so more fits on the 250px mono screen.
+    const char* who = is_self ? "me" : (sender && sender[0] ? sender : "?");
+    char hdr[40];
+    snprintf(hdr, sizeof(hdr), "%s:", who);
+    Handle h = label(l, hdr);
+    N(h)->font = Font::Small;
+
+    const char* body = text ? text : "";
+    int len = (int)strlen(body);
+    if (len == 0) return;
+
+    const int CAP = (int)sizeof(N(h)->text) - 1;   // label text buffer (39 usable)
+    int maxc = (display.width() - 4) / char_w(Font::Body);
+    if (maxc > CAP) maxc = CAP;
+    if (maxc < 1) maxc = 1;
+
+    // Labels don't word-wrap and the text buffer is fixed-size, so split the body
+    // into rows here, breaking on the last space within each window when possible.
+    int pos = 0;
+    while (pos < len) {
+        int remain = len - pos;
+        int take = remain < maxc ? remain : maxc;
+        if (take < remain) {
+            for (int i = take; i > 0; i--) {
+                if (body[pos + i] == ' ') { take = i; break; }
+            }
+        }
+        char seg[40];
+        memcpy(seg, body + pos, take);
+        seg[take] = 0;
+        Handle row = label(l, seg);
+        N(row)->font = Font::Body;
+        pos += take;
+        while (pos < len && body[pos] == ' ') pos++;   // swallow the wrapped space
+    }
 }
 void msg_clear(Handle l) { if (l) N(l)->first_child = nullptr; }
 void msg_scroll_bottom(Handle) {}
@@ -448,11 +481,12 @@ static void draw_node(Node* n) {
 // ===========================================================================
 namespace mono {
 
-static bool s_drawn = false;     // has the panel been drawn since boot?
-static int  s_partials = 0;      // partial refreshes since the last full one
-// Effectively never auto-full-refresh — this panel doesn't need it; ghosting is
-// minimal and full flashes are the annoyance. (Was 20.)
-static const int MAX_PARTIALS = 100000;
+static bool     s_force_full = false;   // request a full refresh on the next render
+static uint32_t s_last_full_ms = 0;     // millis() of the last full refresh
+static bool     s_first = true;         // first render since boot (GxEPD2 self-fulls it)
+// Clear e-ink ghosting with one full refresh per hour; the rest are flash-free
+// partials. Time-based rather than count-based so idle screens still refresh.
+static const uint32_t FULL_REFRESH_INTERVAL_MS = 60UL * 60UL * 1000UL;
 
 // ---- transient toast banner ------------------------------------------------
 static char     g_toast[40]   = {0};
@@ -505,8 +539,8 @@ static void collect_focusables(Node* n, Node** out, int& cnt, int max) {
 }
 
 // Render only when something changed. Routine updates use a fast PARTIAL
-// refresh (no full-screen flash); every MAX_PARTIALS we do one full refresh to
-// clear e-ink ghosting, and a brand-new screen always gets a clean full pass.
+// refresh (no full-screen flash); once an hour we do one full refresh to clear
+// e-ink ghosting, and a brand-new screen always gets a clean full pass.
 void render() {
     if (!g_dirty) return;
     g_dirty = false;
@@ -519,9 +553,15 @@ void render() {
     layout(g_root, 0, 0, display.width(), vh);
     if (!g_focus) g_focus = first_focusable(g_root);
 
-    bool full = !s_drawn || s_partials >= MAX_PARTIALS;
-    if (full) { display.setFullWindow(); s_partials = 0; }
-    else      { display.setPartialWindow(0, 0, display.width(), display.height()); s_partials++; }
+    // Don't force a full refresh on the first boot draw: GxEPD2's init(initial=true)
+    // already promotes the first write to a full refresh, so forcing one here just
+    // doubles up the flash. Otherwise force on an explicit request (e.g. theme
+    // change) or once an hour to clear accumulated ghosting.
+    uint32_t now = millis();
+    bool hourly = (now - s_last_full_ms) >= FULL_REFRESH_INTERVAL_MS;
+    bool full = s_force_full || (!s_first && hourly);
+    if (full) display.setFullWindow();
+    else      display.setPartialWindow(0, 0, display.width(), display.height());
 
     display.firstPage();
     do {
@@ -536,7 +576,11 @@ void render() {
         }
         draw_toast();
     } while (display.nextPage());
-    s_drawn = true;
+    // The first draw is an effective full (GxEPD2 self-fulls it), so it baselines
+    // the hourly timer too — restart the clock whenever the panel goes fully clean.
+    if (full || s_first) s_last_full_ms = now;
+    s_first = false;
+    s_force_full = false;
 }
 
 void redraw() { g_dirty = true; }
@@ -547,7 +591,7 @@ bool get_invert() { return g_invert; }
 void set_invert(bool on) {
     if (g_invert == on) return;
     g_invert = on;
-    s_drawn = false;   // force a full refresh so the e-ink clears the old scheme cleanly
+    s_force_full = true;   // force a full refresh so the e-ink clears the old scheme cleanly
     g_dirty = true;
 }
 

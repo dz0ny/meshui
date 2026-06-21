@@ -10,6 +10,7 @@
 #include "../ui_screen_mgr.h"
 #include "../screen_ids.h"
 #include "../../mesh/provision.h"
+#include "../../mesh/mesh_task.h"
 #include <stdint.h>
 
 namespace ui::screen::provision {
@@ -43,9 +44,22 @@ static void tick(void*) {
             set_text(lbl, i18n::t(i18n::T_PROV_SEARCH)); break;
         case ::provision::State::Sending:
         case ::provision::State::Receiving:
-            set_textf(lbl, "%s %d%%", i18n::t(i18n::T_PROV_TRANSFER), ::provision::progress()); break;
-        case ::provision::State::Done:
-            set_text(lbl, i18n::t(i18n::T_PROV_DONE)); break;
+            // Percent plus raw byte progress so the user sees the transfer move.
+            set_textf(lbl, "%s %d%%\n%d/%d B", i18n::t(i18n::T_PROV_TRANSFER),
+                      ::provision::progress(),
+                      ::provision::bytes_done(), ::provision::bytes_total());
+            break;
+        case ::provision::State::Done: {
+            // On the receiver, profile_import recorded what it applied (-1 on the
+            // sharer, which never imports) — show the channel/contact tally.
+            int ch  = mesh::task::last_import_channels();
+            int con = mesh::task::last_import_contacts();
+            if (ch >= 0)
+                set_textf(lbl, "%s\nch:%d con:%d", i18n::t(i18n::T_PROV_DONE), ch, con);
+            else
+                set_text(lbl, i18n::t(i18n::T_PROV_DONE));
+            break;
+        }
         case ::provision::State::Error:
             set_text(lbl, i18n::t(i18n::T_PROV_FAILED)); break;
         default:
