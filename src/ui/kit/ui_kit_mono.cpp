@@ -99,8 +99,13 @@ static void add_child(Node* parent, Node* child) {
 // Slovenian diacritics show properly. Each Font role is an integer scale of the
 // base glyph. The status bar keeps the 6x8 classic font (ASCII) and is painted
 // by the app, not through here.
+// Global multiplier so the same UI can scale up for a larger panel (e.g. the
+// 540x960 T5 e-paper) without per-screen changes — fonts and, since rows are
+// CONTENT-sized, the whole layout grow with it. 1 = the native 250x122 Wio.
+static int g_ui_scale = 1;
 static int fscale(Font f) {
-    switch (f) { case Font::Title: return 2; case Font::ClockLg: return 3; default: return 1; }
+    int base = (f == Font::Title) ? 2 : (f == Font::ClockLg) ? 3 : 1;
+    return base * g_ui_scale;
 }
 static int line_h(Font f) { return Lemon.yAdvance * fscale(f); }
 // Representative advance for column estimates (keyboard grid, rough caps). Lemon
@@ -841,6 +846,7 @@ void set_statusbar(int h, StatusbarFn fn) { g_sb_h = h; g_sb_fn = fn; g_dirty = 
 
 void text(int x, int y, const char* s, Font f) { draw_text(x, y, s, f, false); }
 int  text_width(const char* s, Font f) { return text_w(s, f); }
+void set_ui_scale(int s) { g_ui_scale = s < 1 ? 1 : s; g_dirty = true; }
 
 void tick(uint32_t now_ms) {
     // Expire the toast banner: clear it and force one redraw to erase it.

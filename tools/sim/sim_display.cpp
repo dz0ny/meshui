@@ -56,7 +56,7 @@ static void chunk(std::vector<uint8_t>& out, const char* type, const std::vector
 }
 
 bool SimDisplay::savePng(const char* path) const {
-    return write_gray_png(path, W, H, _buf);
+    return write_gray_png(path, _w, _h, _buf);
 }
 
 bool write_gray_png(const char* path, int W, int H, const unsigned char* buf) {

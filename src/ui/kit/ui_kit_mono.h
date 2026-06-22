@@ -11,6 +11,10 @@ namespace ui::kit::mono {
 void text(int x, int y, const char* s, Font f);
 int  text_width(const char* s, Font f);
 
+// Scale the whole mono UI up for a larger panel (1 = native 250x122 Wio). Fonts
+// and, since rows are content-sized, the layout grow proportionally.
+void set_ui_scale(int s);
+
 void reset();                 // drop the current node tree (start a new screen)
 void render();                // layout + draw the tree to the e-ink (paged)
 void redraw();                // force a redraw on next render (e.g. clock ticked)

@@ -11,9 +11,11 @@
 #include "../../src/ui/ui_screen_mgr.h"
 #include "../../src/model.h"
 #include "../../src/mesh/mesh_task.h"
+#include "../../src/ui/i18n.h"
 #include "glcdfont.h"
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 
 namespace model { void sim_seed(); }
@@ -34,31 +36,35 @@ namespace ui { namespace screen {
 // Title for the centered status-bar slot (sim shows the screen's name; the device
 // maps screen ids to i18n titles in main_wio's title_for()).
 static const char* g_title = nullptr;
+static int g_sb_scale = 1;   // status-bar text scale (1=Wio, larger for the T5 preview)
 
-// Mirror of main_wio.cpp draw_statusbar so the sim chrome matches the device.
+// Mirror of main_wio.cpp draw_statusbar, scale-aware so it reads on a big panel.
 static void draw_statusbar(int w, int h) {
-    (void)h;
+    int cs = g_sb_scale, cw = 6 * cs;
+    int y = (h - 8 * cs) / 2; if (y < 0) y = 0;
     display.setFont(nullptr);
-    display.setTextSize(1);
+    display.setTextSize(cs);
     display.setTextColor(mono::fg());
     char t[8];
     snprintf(t, sizeof(t), "%02d:%02d", model::clock.hour, model::clock.minute);
-    display.setCursor(2, 3); display.print(t);
+    display.setCursor(2, y); display.print(t);
     char g[12];
     if (model::gps.has_fix) snprintf(g, sizeof(g), "GPS %d", (int)model::gps.satellites);
     else                    snprintf(g, sizeof(g), "GPS --");
     char r[24];
     snprintf(r, sizeof(r), "%s  %d%%", g, model::battery.percent);
-    int r_x = w - (int)strlen(r) * 6 - 2;
-    display.setCursor(r_x, 3); display.print(r);
+    int r_x = w - (int)strlen(r) * cw - 2;
+    display.setCursor(r_x, y); display.print(r);
 
     if (g_title && g_title[0]) {
-        int clock_end = 2 + (int)strlen(t) * 6;
+        // Font::Small already scales with the UI scale, matching the classic
+        // clock/gps size above.
+        int clock_end = 2 + (int)strlen(t) * cw;
         int tw = mono::text_width(g_title, ui::kit::Font::Small);
         int tx = (w - tw) / 2;
         if (tx < clock_end + 4) tx = clock_end + 4;
         if (tx + tw > r_x - 4) tx = r_x - 4 - tw;
-        if (tx >= clock_end + 4) mono::text(tx, 2, g_title, ui::kit::Font::Small);
+        if (tx >= clock_end + 4) mono::text(tx, y, g_title, ui::kit::Font::Small);
     }
 }
 
@@ -68,31 +74,52 @@ static void draw_statusbar(int w, int h) {
 namespace ui { namespace screen { namespace waypoint_detail { void set_index(int); } } }
 namespace ui { namespace screen { namespace compass { void set_target_pos(const char*, int32_t, int32_t); } } }
 
-struct Entry { const char* name; screen_lifecycle_t* life; void (*pre)(); };
-#define S(ns) { #ns, &ui::screen::ns::lifecycle, nullptr }
+// The home menu has no lifecycle (main_wio builds it inline) — mirror it here so
+// the main menu can be previewed too.
+static void build_home() {
+    using namespace ui::kit;
+    Handle lst = list(screen_root());
+    gap(lst, 2);
+    menu_row(lst, i18n::t(i18n::T_MESSAGES),  nullptr, nullptr);
+    if (model::team_count() > 0)
+        menu_row(lst, i18n::t(i18n::T_TEAM),  nullptr, nullptr);
+    menu_row(lst, i18n::t(i18n::T_TRAIL),     nullptr, nullptr);
+    menu_row(lst, i18n::t(i18n::T_WAYPOINTS), nullptr, nullptr);
+    menu_row(lst, i18n::t(i18n::T_SETTINGS),  nullptr, nullptr);
+}
+
+struct Entry { const char* name; screen_lifecycle_t* life; void (*pre)(); void (*build)(); };
+#define S(ns) { #ns, &ui::screen::ns::lifecycle, nullptr, nullptr }
 static void pre_waypoint_detail() { ui::screen::waypoint_detail::set_index(0); }
 static void pre_compass() { ui::screen::compass::set_target_pos("Koca", 46070000, 14520000); }
 static const Entry SCREENS[] = {
+    { "home", nullptr, nullptr, build_home },
     S(chat), S(quick_reply), S(status), S(settings), S(gps), S(mesh_settings),
     S(set_gps), S(set_mesh), S(set_display), S(set_sound), S(set_privacy), S(set_ble),
-    { "compass", &ui::screen::compass::lifecycle, pre_compass },
+    { "compass", &ui::screen::compass::lifecycle, pre_compass, nullptr },
     S(trail), S(battery), S(team), S(waypoints),
-    { "waypoint_detail", &ui::screen::waypoint_detail::lifecycle, pre_waypoint_detail },
+    { "waypoint_detail", &ui::screen::waypoint_detail::lifecycle, pre_waypoint_detail, nullptr },
     S(provision),
-    { "keyboard", nullptr, nullptr },   // on-screen keyboard modal (synthetic)
+    { "keyboard", nullptr, nullptr, nullptr },   // on-screen keyboard modal (synthetic)
 };
 #undef S
 
 static screen_lifecycle_t* g_life = nullptr;
 static void build_current() { if (g_life && g_life->create) g_life->create(screen_root()); }
 static void build_empty() {}
+static void (*g_build)() = nullptr;
+static void run_build() { if (g_build) g_build(); }
 
 static void render_screen(const Entry& e) {
-    g_title = e.name;
+    // Home shows the node name in the status bar like the device does.
+    g_title = (strcmp(e.name, "home") == 0) ? mesh::task::node_name() : e.name;
     if (e.pre) e.pre();
-    // A null lifecycle is the on-screen keyboard demo: render an empty screen,
-    // then open the modal keyboard over it (kb_open paints itself).
-    if (!e.life) {
+    if (e.build) {                       // synthetic builder (home)
+        g_build = e.build;
+        mono::go(run_build);
+        return;
+    }
+    if (!e.life) {                       // keyboard demo: empty screen + modal
         mono::go(build_empty);
         ui::kit::keyboard_open("Pozdravljen", 150, nullptr, nullptr);
         return;
@@ -145,7 +172,21 @@ int main(int argc, char** argv) {
 
     model::sim_seed();
     sim_set_millis(1);
-    mono::set_statusbar(14, draw_statusbar);
+
+    // SIM_TARGET=t5 previews the mono engine at the T5 e-paper's 540x960 portrait
+    // panel with the UI scaled up; default is the native 250x122 Wio.
+    const char* tgt = getenv("SIM_TARGET");
+    if (tgt && strcmp(tgt, "t5") == 0) {
+        display.set_size(540, 960);
+        g_sb_scale = 3;
+        mono::set_ui_scale(3);
+        mono::set_statusbar(46, draw_statusbar);
+    } else {
+        display.set_size(250, 122);
+        g_sb_scale = 1;
+        mono::set_ui_scale(1);
+        mono::set_statusbar(14, draw_statusbar);
+    }
 
     if (strcmp(which, "all") == 0) return montage();
 

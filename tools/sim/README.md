@@ -14,9 +14,20 @@ open tools/sim/all.png
 
 Screens: `chat quick_reply status settings gps mesh_settings set_gps set_mesh
 set_display set_sound set_privacy set_ble compass trail battery team waypoints
-waypoint_detail provision`. Sample data (messages, waypoints, clock, battery)
-comes from `model::sim_seed()` in `sim_stubs.cpp` — tweak it to preview other
-states.
+waypoint_detail provision keyboard`. Sample data (messages, waypoints, clock,
+battery) comes from `model::sim_seed()` in `sim_stubs.cpp` — tweak it to preview
+other states.
+
+### Panel target
+
+By default the sim renders the Wio's 250×122 panel. Set `SIM_TARGET=t5` to
+preview the same mono engine on the T5 e-paper's 540×960 portrait panel with the
+UI scaled up (`mono::set_ui_scale(3)`) — used to evaluate running the mono kit on
+the S3 board instead of LVGL, before any on-device work:
+
+```sh
+SIM_TARGET=t5 SIM_LANG=en tools/sim/sim chat t5-chat.png
+```
 
 ## How it works
 

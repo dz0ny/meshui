@@ -19,11 +19,13 @@ void sim_set_millis(uint32_t ms);
 // 0 = black ink, 255 = white paper.
 class SimDisplay {
 public:
-    static const int W = 250;   // GxEPD2_213_B74 visible width  (rotation 1)
-    static const int H = 122;   // GxEPD2_213_B74 visible height (rotation 1)
+    static const int MAXW = 540;   // largest panel we preview (T5 e-paper, portrait)
+    static const int MAXH = 960;
+    int _w = 250, _h = 122;        // active size (default: Wio 250x122)
+    void set_size(int w, int h) { _w = w; _h = h; }
 
-    int16_t width()  const { return W; }
-    int16_t height() const { return H; }
+    int16_t width()  const { return _w; }
+    int16_t height() const { return _h; }
 
     void setFont(const void*) {}                 // classic font only
     void setTextSize(uint8_t s) { _size = s ? s : 1; }
@@ -36,10 +38,10 @@ public:
     void firstPage() {}
     bool nextPage() { return false; }   // full buffer: one page covers the screen
 
-    void fillScreen(uint16_t c) { for (int i = 0; i < W * H; i++) _buf[i] = lum(c); }
+    void fillScreen(uint16_t c) { for (int i = 0; i < _w * _h; i++) _buf[i] = lum(c); }
     void drawPixel(int16_t x, int16_t y, uint16_t c) {
-        if (x < 0 || y < 0 || x >= W || y >= H) return;
-        _buf[y * W + x] = lum(c);
+        if (x < 0 || y < 0 || x >= _w || y >= _h) return;
+        _buf[y * _w + x] = lum(c);
     }
     void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t c) {
         for (int16_t j = 0; j < h; j++) for (int16_t i = 0; i < w; i++) drawPixel(x + i, y + j, c);
@@ -71,7 +73,7 @@ private:
         _cx += 6 * _size;
     }
 
-    uint8_t _buf[W * H];
+    uint8_t _buf[MAXW * MAXH];
     int16_t _cx = 0, _cy = 0;
     uint8_t _size = 1;
     uint16_t _txt = GxEPD_BLACK;
