@@ -9,8 +9,12 @@
 
 #include "ui_kit.h"
 #include "ui_kit_mono.h"
+#ifdef MESHUI_SIM
+#include <sim_arduino.h>     // host display + millis() (tools/sim, via -Itools/sim)
+#else
 #include "../../board_wio.h"
 #include <Arduino.h>
+#endif
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
