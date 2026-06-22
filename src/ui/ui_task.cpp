@@ -41,6 +41,9 @@
 #include "screens/ping.h"
 #include "screens/trail.h"
 #include "screens/team.h"
+#include "screens/compass.h"
+#include "screens/waypoints.h"
+#include "screens/waypoint_detail.h"
 
 static void show_power_off_splash() {
     ui::statusbar::hide();
@@ -460,7 +463,10 @@ void start(int core) {
     ui::screen_mgr::register_screen(23, &ui::screen::settings_device::lifecycle);
     ui::screen_mgr::register_screen(24, &ui::screen::touch_debug::lifecycle);
     ui::screen_mgr::register_screen(25, &ui::screen::trail::lifecycle);
+    ui::screen_mgr::register_screen(SCREEN_COMPASS, &ui::screen::compass::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_TEAM, &ui::screen::team::lifecycle);
+    ui::screen_mgr::register_screen(SCREEN_WAYPOINTS, &ui::screen::waypoints::lifecycle);
+    ui::screen_mgr::register_screen(SCREEN_WAYPOINT_DETAIL, &ui::screen::waypoint_detail::lifecycle);
     Serial.println("UI: switch to home...");
     ui::screen_mgr::switch_to(0, false);
 

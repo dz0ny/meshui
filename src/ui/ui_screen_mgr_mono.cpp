@@ -9,7 +9,7 @@
 
 namespace ui::screen_mgr {
 
-static const int MAX_ID = 35;
+static const int MAX_ID = 37;
 static screen_lifecycle_t* g_reg[MAX_ID] = {};
 
 static const int MAX_STACK = 8;

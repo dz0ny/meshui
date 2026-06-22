@@ -27,6 +27,7 @@ static uint8_t  tgt_prefix[6] = {};
 static char     tgt_name[32]  = {};
 static int32_t  tgt_lat_e6 = 0, tgt_lon_e6 = 0;
 static bool     tgt_set = false;
+static bool     tgt_by_prefix = false;   // false → fixed coord, don't re-resolve
 
 static Handle cv = nullptr;
 static Handle info_label = nullptr;
@@ -41,12 +42,23 @@ void set_target(const uint8_t* prefix6, const char* name,
     tgt_lat_e6 = lat_e6;
     tgt_lon_e6 = lon_e6;
     tgt_set = true;
+    tgt_by_prefix = true;
+}
+
+void set_target_pos(const char* name, int32_t lat_e6, int32_t lon_e6) {
+    memset(tgt_prefix, 0, sizeof(tgt_prefix));
+    tgt_name[0] = 0;
+    if (name && name[0]) { strncpy(tgt_name, name, sizeof(tgt_name) - 1); tgt_name[sizeof(tgt_name) - 1] = 0; }
+    tgt_lat_e6 = lat_e6;
+    tgt_lon_e6 = lon_e6;
+    tgt_set = true;
+    tgt_by_prefix = false;
 }
 
 // Re-resolve the target's freshest position by prefix; falls back to the
-// snapshot captured at selection time.
+// snapshot captured at selection time. Fixed-coordinate targets stay put.
 static void resolve_target() {
-    if (!tgt_set) return;
+    if (!tgt_set || !tgt_by_prefix) return;
     for (int i = 0; i < model::live_position_count && i < model::MAX_LIVE_POSITIONS; i++) {
         const model::LivePosition& p = model::live_positions[i];
         if (p.valid && memcmp(p.pub_key_prefix, tgt_prefix, 6) == 0) {

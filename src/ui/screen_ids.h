@@ -40,4 +40,6 @@ enum screen_id {
     SCREEN_PROVISION            = 32,
     SCREEN_PROVISION_RUN        = 33,
     SCREEN_PROVISION_PICK       = 34,
+    SCREEN_WAYPOINTS            = 35,
+    SCREEN_WAYPOINT_DETAIL      = 36,
 };

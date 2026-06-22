@@ -24,6 +24,8 @@
 #include "ui/screens/trail.h"
 #include "ui/screens/battery.h"
 #include "ui/screens/team.h"
+#include "ui/screens/waypoints.h"
+#include "ui/screens/waypoint_detail.h"
 #include "ui/screens/provision.h"
 #include "model.h"
 #include "trail_store.h"
@@ -202,6 +204,7 @@ static void draw_statusbar(int w, int h) {
 static void home_messages(void*) { ui::screen_mgr::push(SCREEN_CHAT, true); }
 static void home_team(void*)     { ui::screen_mgr::push(SCREEN_TEAM, true); }
 static void home_trail(void*)    { ui::screen_mgr::push(SCREEN_TRAIL, true); }
+static void home_waypoints(void*){ ui::screen_mgr::push(SCREEN_WAYPOINTS, true); }
 static void home_status(void*)   { ui::screen_mgr::push(SCREEN_STATUS, true); }
 static void home_settings(void*) { ui::screen_mgr::push(SCREEN_SETTINGS, true); }
 
@@ -214,6 +217,7 @@ static void home_create(Handle root) {
     if (model::team_count() > 0)
         menu_row(lst, i18n::t(i18n::T_TEAM), home_team, nullptr);
     menu_row(lst, i18n::t(i18n::T_TRAIL),    home_trail,    nullptr);
+    menu_row(lst, "Waypoints",               home_waypoints, nullptr);
     // GPS / Mesh / Battery live under Status (it already lists their info pages).
     menu_row(lst, i18n::t(i18n::T_STATUS),   home_status,   nullptr);
     menu_row(lst, i18n::t(i18n::T_SETTINGS), home_settings, nullptr);
@@ -372,6 +376,8 @@ void setup() {
     ui::screen_mgr::register_screen(SCREEN_TRAIL,    &ui::screen::trail::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_BATTERY,  &ui::screen::battery::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_TEAM,     &ui::screen::team::lifecycle);
+    ui::screen_mgr::register_screen(SCREEN_WAYPOINTS,       &ui::screen::waypoints::lifecycle);
+    ui::screen_mgr::register_screen(SCREEN_WAYPOINT_DETAIL, &ui::screen::waypoint_detail::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_PROVISION,      &ui::screen::provision::lifecycle);
     ui::screen_mgr::register_screen(SCREEN_PROVISION_RUN,  &ui::screen::provision::run_lifecycle);
     ui::screen_mgr::register_screen(SCREEN_PROVISION_PICK, &ui::screen::provision::pick_lifecycle);

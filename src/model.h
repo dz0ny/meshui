@@ -9,6 +9,7 @@
 // many screens that include model.h). Files that touch model::trail include
 // trail_store.h themselves.
 class TrailStore;
+class WaypointStore;   // see waypoint_store.h (same rationale as TrailStore)
 
 // Reactive data model — single source of truth for all UI screens.
 // Updated by background tasks (mesh, gps, board), read by UI.
@@ -163,6 +164,10 @@ void upsert_live_position(const uint8_t* prefix6, const char* name,
 // GPS breadcrumb trail (RAM ring buffer). Recording is toggled from the Trail
 // screen; points are sampled in the background by update_gps() while active.
 extern TrailStore trail;
+
+// User-marked GPS waypoints (RAM store). Added from the Waypoints screen or by
+// saving a location shared in a message. See waypoint_store.h.
+extern WaypointStore waypoints;
 
 // Global state — written by updaters, read by UI
 extern GPS     gps;

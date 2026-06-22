@@ -80,6 +80,9 @@ static const char* default_nav_title(int id) {
         case SCREEN_SETTINGS_DEVICE: return "Device";
         case SCREEN_TRAIL: return "Trail";
         case SCREEN_TEAM: return "Team";
+        case SCREEN_COMPASS: return "Compass";
+        case SCREEN_WAYPOINTS: return "Waypoints";
+        case SCREEN_WAYPOINT_DETAIL: return "Waypoint";
         default: return "";
     }
 }

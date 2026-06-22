@@ -5,6 +5,7 @@
 #include <math.h>
 #include "model.h"
 #include "trail_store.h"
+#include "waypoint_store.h"
 #include "util/text_filter.h"
 #include "board.h"
 #include "mesh/mesh_bridge.h"
@@ -20,6 +21,7 @@ GPS     gps = {};
 Battery battery = {};
 Mesh    mesh = {};
 TrailStore trail;
+WaypointStore waypoints;
 Clock   clock = {};
 ContactEntry contacts[MAX_CONTACT_ENTRIES] = {};
 int contact_count = 0;

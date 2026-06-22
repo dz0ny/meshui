@@ -37,6 +37,7 @@ static void on_contacts_click(void*) { ui::screen_mgr::push(SCREEN_CONTACTS, tru
 static void on_sensors_click(void*)  { ui::screen_mgr::push(SCREEN_SENSORS, true); }
 static void on_map_click(void*)      { ui::screen_mgr::push(SCREEN_MAP, true); }
 static void on_trail_click(void*)    { ui::screen_mgr::push(SCREEN_TRAIL, true); }
+static void on_waypoints_click(void*){ ui::screen_mgr::push(SCREEN_WAYPOINTS, true); }
 static void on_settings_click(void*) { ui::screen_mgr::push(SCREEN_SETTINGS, true); }
 
 static void create(Handle parent) {
@@ -88,6 +89,7 @@ static void create(Handle parent) {
     menu_row(menu, "Sensors",  on_sensors_click,  nullptr);
     menu_row(menu, "Map",      on_map_click,      nullptr);
     menu_row(menu, "Trail",    on_trail_click,    nullptr);
+    menu_row(menu, "Waypoints", on_waypoints_click, nullptr);
     menu_row(menu, "Settings", on_settings_click, nullptr);
 }
 

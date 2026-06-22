@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 
 namespace ui::geo {
 
@@ -26,6 +28,47 @@ inline double bearing(double lat1, double lon1, double lat2, double lon2) {
                sin(lat1 * DEG_TO_RAD) * cos(lat2 * DEG_TO_RAD) * cos(dLon);
     double b = atan2(y, x) * (180.0 / M_PI);
     return fmod(b + 360.0, 360.0);
+}
+
+// Parse a shared-location string out of a message body. Recognises:
+//   geo:LAT,LON              RFC-5870-ish — what the quick-reply "GPS location" sends
+//   geo:LAT,LON;u=NN         extra geo: params are ignored
+//   [WAY]LAT,LON Some label  MeshCore-Solo waypoint share (label optional)
+// Returns true and fills lat/lon on success; if `label`/`label_n` are given, the
+// trailing free-text label (if any) is copied in. Coordinates are range-checked.
+inline bool parse_location(const char* text, double& lat, double& lon,
+                           char* label = nullptr, size_t label_n = 0) {
+    if (label && label_n) label[0] = 0;
+    if (!text) return false;
+
+    const char* p = text;
+    if      (strncmp(p, "[WAY]", 5) == 0) p += 5;
+    else if (strncmp(p, "geo:",  4) == 0) p += 4;
+    else return false;
+
+    char* end = nullptr;
+    double la = strtod(p, &end);
+    if (end == p) return false;
+    while (*end == ' ') end++;
+    if (*end != ',') return false;
+    end++;
+
+    char* end2 = nullptr;
+    double lo = strtod(end, &end2);
+    if (end2 == end) return false;
+    if (la < -90.0 || la > 90.0 || lo < -180.0 || lo > 180.0) return false;
+
+    lat = la;
+    lon = lo;
+
+    if (label && label_n) {
+        const char* l = end2;
+        while (*l == ' ' || *l == ';') l++;   // skip the separator / geo: params start
+        size_t k = 0;
+        for (; *l && *l != ';' && k < label_n - 1; l++) label[k++] = *l;
+        label[k] = 0;
+    }
+    return true;
 }
 
 inline const char* bearing_to_cardinal(double bearing) {

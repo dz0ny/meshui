@@ -6,6 +6,7 @@
 
 #include "model.h"
 #include "trail_store.h"
+#include "waypoint_store.h"
 #include "util/text_filter.h"
 #include "mesh/mesh_bridge.h"
 #include "mesh/mesh_task.h"          // push_all_contacts()
@@ -36,6 +37,7 @@ LivePosition live_positions[MAX_LIVE_POSITIONS] = {};
 int live_position_count = 0;
 uint32_t live_position_revision = 0;
 TrailStore trail;
+WaypointStore waypoints;
 
 void upsert_live_position(const uint8_t* prefix6, const char* name,
                           int32_t lat_e6, int32_t lon_e6, uint32_t timestamp,
