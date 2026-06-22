@@ -1,0 +1,18 @@
+
+            <div data-nrf-dfu data-bin="$bin_attr" data-dat="$dat_attr" class="space-y-4">
+              <div class="flex flex-wrap items-center gap-3">
+                <button data-nrf-connect class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2">Connect &amp; Flash</button>
+                $product_link
+              </div>
+              <progress data-nrf-progress hidden class="ui-progress h-2 w-full"></progress>
+              <pre data-nrf-log hidden class="max-h-44 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 font-mono text-xs leading-5 text-muted-foreground"></pre>
+            </div>
+            <div class="rounded-md border bg-muted/40 p-4 text-sm leading-6 text-muted-foreground">
+              <p class="font-medium text-foreground">Flash over Web Serial (Chrome/Edge)</p>
+              <ol class="mt-2 list-decimal space-y-1 pl-5">
+                <li>Connect the tracker to your computer with a USB data cable.</li>
+                <li>Double-tap the <strong>RESET</strong> button to enter the bootloader — a <code>TRACKER L1</code> drive appears.</li>
+                <li>Click <strong>Connect &amp; Flash</strong> and pick the tracker's serial port. Progress shows below.</li>
+              </ol>
+              <p class="mt-3">Prefer drag-and-drop? <a class="text-sm font-medium text-primary underline-offset-4 hover:underline" href="$uf2_href" download>Download the UF2</a> and copy it onto the <code>TRACKER L1</code> drive instead.</p>
+            </div>

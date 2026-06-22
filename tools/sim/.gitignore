@@ -1,3 +1,5 @@
 sim
 *.png
 *.dSYM/
+web/sim.js
+web/sim.wasm

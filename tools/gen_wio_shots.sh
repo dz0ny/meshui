@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 
 tools/sim/build.sh
 
-SCREENS=(chat team waypoints gps compass settings keyboard)
+SCREENS=(chat team trail waypoints gps compass settings keyboard)
 for s in "${SCREENS[@]}"; do
     SIM_LANG=en tools/sim/sim "$s" "assets/wio-$s.png" >/dev/null
     echo "assets/wio-$s.png"

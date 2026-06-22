@@ -29,6 +29,29 @@ the S3 board instead of LVGL, before any on-device work:
 SIM_TARGET=t5 SIM_LANG=en tools/sim/sim chat t5-chat.png
 ```
 
+## Interactive browser build (WASM)
+
+The static sim renders one screen to a PNG. The **WASM build** compiles the same
+mono engine + the *real* mono screen manager (`ui_screen_mgr_mono.cpp`) and the
+navigation glue from `main_wio.cpp` (home menu, dashboard, key routing), so you
+can navigate the whole UI live in a browser on mock data — no flashing.
+
+```sh
+tools/sim/build_web.sh                              # -> web/sim.js + web/sim.wasm
+python3 -m http.server -d tools/sim/web 8000        # serve it
+open http://localhost:8000
+```
+
+Needs Emscripten (`brew install emscripten`); the build script pins a Python
+≥3.10 if the default `python3` is Xcode's 3.9. Controls in the page: joystick
+D-pad (or keyboard arrows / Enter / Backspace), a **panel** toggle (Wio vs T5
+scaled), **lang** (EN/SL), **dark mode**, and a **jump-to-screen** picker. Any
+key from the dashboard opens the menu, exactly like the device.
+
+The page reads the engine's grayscale framebuffer (`sim_pixels`/`sim_w`/`sim_h`)
+into a `<canvas>` after each `sim_key()`/`sim_tick()`; `sim_tick()` advances time
+so the dashboard clock and toast banners run. Exports live in `sim_web.cpp`.
+
 ## How it works
 
 - `sim_arduino.h` / `sim_display.cpp` — a `SimDisplay` with the exact

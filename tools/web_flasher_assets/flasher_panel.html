@@ -1,0 +1,15 @@
+      <div role="tabpanel" data-panel="$slug" aria-labelledby="tab-$slug"$hidden>
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+          <div class="flex flex-col space-y-1.5 p-6">
+            <div><span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold text-foreground">$eyebrow</span></div>
+            <h2 class="text-2xl font-semibold leading-none tracking-tight">$device_name</h2>
+            <p class="text-sm text-muted-foreground">$description</p>
+          </div>
+          <div class="space-y-6 p-6 pt-0">
+            <div class="flex flex-wrap gap-2">
+              <span class="inline-flex items-center rounded-md border border-transparent bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">Chip: $chip_label</span>
+              <span class="inline-flex items-center rounded-md border border-transparent bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">Build: $version</span>
+            </div>$action_html$product_image_html$screenshots_html$preview_html
+          </div>
+        </div>
+      </div>

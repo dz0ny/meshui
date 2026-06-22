@@ -10,9 +10,11 @@
 #include "../../src/ui/kit/ui_kit_mono.h"
 #include "../../src/ui/ui_screen_mgr.h"
 #include "../../src/model.h"
+#include "../../src/trail_store.h"
 #include "../../src/mesh/mesh_task.h"
 #include "../../src/ui/i18n.h"
 #include "glcdfont.h"
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -92,12 +94,33 @@ struct Entry { const char* name; screen_lifecycle_t* life; void (*pre)(); void (
 #define S(ns) { #ns, &ui::screen::ns::lifecycle, nullptr, nullptr }
 static void pre_waypoint_detail() { ui::screen::waypoint_detail::set_index(0); }
 static void pre_compass() { ui::screen::compass::set_target_pos("Hut", 46070000, 14520000); }
+// Seed an active recording with a wandering breadcrumb path that ends at the
+// live GPS fix, so the Trail map shows a real polyline (start cross + current
+// dot) and the headline distance/time read like a hike in progress.
+static void pre_trail() {
+    auto& t = model::trail;
+    t.setActive(false);     // sim_seed left a recording running; reset cleanly
+    t.clear();              // clear() keeps the active flag, hence the toggle above
+    sim_set_millis(1);      // small base so the session start anchors near zero
+    int32_t lat = 46040000, lon = 14486000;     // start SW of the seeded fix
+    uint32_t ts = model::epoch_now - 1500;
+    for (int i = 0; i < 40; i++) {
+        t.addPoint(lat, lon, ts, 1);
+        ts += 35;
+        lat += 380 + (int32_t)(120.0f * sinf(i * 0.7f));   // meander NE with a wobble
+        lon += 300 + (int32_t)(200.0f * cosf(i * 0.5f));
+    }
+    model::gps.lat = lat / 1.0e6; model::gps.lng = lon / 1.0e6;   // current pos at the trail head
+    t.setActive(true);                           // off->on anchors _session_start_ms at millis()=1
+    sim_set_millis(1u + 23u * 60u * 1000u);      // ~23 min elapsed for the headline time
+}
 static const Entry SCREENS[] = {
     { "home", nullptr, nullptr, build_home },
     S(chat), S(quick_reply), S(status), S(settings), S(gps), S(mesh_settings),
     S(set_gps), S(set_mesh), S(set_display), S(set_sound), S(set_privacy), S(set_ble),
     { "compass", &ui::screen::compass::lifecycle, pre_compass, nullptr },
-    S(trail), S(battery), S(team), S(waypoints),
+    { "trail", &ui::screen::trail::lifecycle, pre_trail, nullptr },
+    S(battery), S(team), S(waypoints),
     { "waypoint_detail", &ui::screen::waypoint_detail::lifecycle, pre_waypoint_detail, nullptr },
     S(provision),
     { "keyboard", nullptr, nullptr, nullptr },   // on-screen keyboard modal (synthetic)

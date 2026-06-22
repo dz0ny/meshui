@@ -22,6 +22,7 @@ namespace model {
     GPS     gps     = {};
     Battery battery = {};
     Mesh    mesh    = {};
+    Sleep   sleep_cfg = {};   // dashboard reads unread_messages
     uint32_t epoch_now = 0;
 
     ContactEntry contacts[MAX_CONTACT_ENTRIES] = {};
@@ -51,6 +52,7 @@ namespace model {
         gps.has_fix = true; gps.satellites = 9;
         gps.lat = 46.05; gps.lng = 14.50;     // Ljubljana-ish, for team distances
         battery.percent = 37;
+        sleep_cfg.unread_messages = 2;   // so the dashboard shows a count
         epoch_now = 100000;
 
         // Team = favorited chat contacts. Seed two, with live positions so the
@@ -158,6 +160,10 @@ namespace mesh { namespace task {
 }}
 
 // ---- ui::screen_mgr (navigation no-ops) ------------------------------------
+// The static PNG sim renders one screen at a time, so navigation is stubbed out.
+// The interactive web build (SIM_WEB) instead links the real mono screen manager
+// (ui_screen_mgr_mono.cpp) plus a real toast, so screens actually navigate.
+#ifndef SIM_WEB
 namespace ui { namespace screen_mgr {
     void init() {}
     bool register_screen(int, screen_lifecycle_t*) { return true; }
@@ -174,6 +180,7 @@ namespace ui { namespace screen_mgr {
 namespace ui { namespace toast {
     void show(const char*, uint32_t) {}
 }}
+#endif // !SIM_WEB
 
 // ---- provision backend (idle/no-op) ----------------------------------------
 namespace provision {

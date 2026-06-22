@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>meshui — mono UI simulator</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 20px;
+         display: flex; flex-direction: column; align-items: center; gap: 16px;
+         background: #1a1a1a; color: #ddd; }
+  h1 { font-size: 16px; font-weight: 600; margin: 0; color: #fff; }
+  .panel { background: #2a2a2a; border-radius: 10px; padding: 14px;
+           display: flex; flex-direction: column; gap: 12px; align-items: center; }
+  canvas { image-rendering: pixelated; background: #fff;
+           border: 1px solid #444; border-radius: 4px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  button, select { font: inherit; background: #3a3a3a; color: #eee; border: 1px solid #555;
+                   border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  button:hover { background: #4a4a4a; }
+  button:active { background: #5a5a5a; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px);
+          gap: 4px; }
+  .dpad button { padding: 0; font-size: 16px; }
+  .dpad .u { grid-area: 1/2; } .dpad .l { grid-area: 2/1; } .dpad .e { grid-area: 2/2; }
+  .dpad .r { grid-area: 2/3; } .dpad .d { grid-area: 3/2; } .dpad .b { grid-area: 1/3; }
+  label { display: flex; gap: 6px; align-items: center; }
+  .hint { color: #888; font-size: 12px; max-width: 460px; text-align: center; }
+  code { background: #000; padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+  <h1>meshui — mono UI simulator</h1>
+
+  <div class="row">
+    <label>Panel
+      <select id="target">
+        <option value="0">Wio 250×122</option>
+        <option value="1">T5 540×960 (scaled)</option>
+      </select>
+    </label>
+    <label>Lang
+      <select id="lang">
+        <option value="0">EN</option>
+        <option value="1">SL</option>
+      </select>
+    </label>
+    <label>Jump to
+      <select id="goto"></select>
+    </label>
+    <button id="invert">Dark mode</button>
+    <button id="reset">Reset</button>
+  </div>
+
+  <div class="panel">
+    <canvas id="screen"></canvas>
+    <div class="dpad">
+      <button class="u" data-key="85">▲</button>
+      <button class="l" data-key="76">◀</button>
+      <button class="e" data-key="69">●</button>
+      <button class="r" data-key="82">▶</button>
+      <button class="d" data-key="68">▼</button>
+      <button class="b" data-key="66">⤺</button>
+    </div>
+  </div>
+
+  <p class="hint">
+    Joystick: <code>▲▼◀▶</code> move focus · <code>●</code> select · <code>⤺</code> back.
+    Keyboard: arrow keys, <code>Enter</code>/<code>Space</code> = select, <code>Backspace</code>/<code>Esc</code> = back.
+    Any key from the dashboard opens the menu. Data is mock (<code>model::sim_seed</code>).
+  </p>
+
+<script src="sim.js"></script>
+<script>
+const SCREENS = [
+  // id, label — mirrors screen_ids.h (subset registered by sim_web.cpp)
+  [31, "Dashboard"], [0, "Home menu"], [2, "Messages"], [26, "Quick reply"],
+  [29, "Team"], [25, "Trail"], [35, "Waypoints"], [36, "Waypoint detail"],
+  [27, "Compass"], [3, "Settings"], [9, "GPS settings"], [10, "Mesh settings"],
+  [8, "Display"], [30, "Sound"], [28, "Privacy"], [15, "Bluetooth"],
+  [5, "Battery"], [7, "Status"], [4, "GPS info"], [6, "Mesh info"], [32, "Provision"],
+];
+
+let M, scale = 3;
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d");
+
+function draw() {
+  const w = M._sim_w(), h = M._sim_h();
+  const ptr = M._sim_pixels();
+  const gray = M.HEAPU8.subarray(ptr, ptr + w * h);
+  const img = ctx.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) {
+    const v = gray[i];
+    img.data[i*4] = v; img.data[i*4+1] = v; img.data[i*4+2] = v; img.data[i*4+3] = 255;
+  }
+  // upscale via an offscreen 1:1 then nearest-neighbor blit
+  const off = new OffscreenCanvas(w, h);
+  off.getContext("2d").putImageData(img, 0, 0);
+  scale = (w > 300) ? 1 : 3;           // T5 panel is already large
+  canvas.width = w * scale; canvas.height = h * scale;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+}
+
+function boot() {
+  const target = +document.getElementById("target").value;
+  const lang = +document.getElementById("lang").value;
+  M._sim_boot(target, lang);
+  draw();
+}
+
+function key(k) { M._sim_key(k); draw(); }
+
+SimModule().then((mod) => {
+  M = mod;
+
+  const sel = document.getElementById("goto");
+  for (const [id, name] of SCREENS) {
+    const o = document.createElement("option");
+    o.value = id; o.textContent = name; sel.appendChild(o);
+  }
+
+  boot();
+
+  // advance time ~4x/sec so the dashboard clock timer + toast expiry run
+  setInterval(() => { M._sim_tick(250); draw(); }, 250);
+
+  document.querySelectorAll(".dpad button").forEach((b) =>
+    b.addEventListener("click", () => key(+b.dataset.key)));
+
+  document.getElementById("target").addEventListener("change", boot);
+  document.getElementById("lang").addEventListener("change", boot);
+  document.getElementById("reset").addEventListener("click", boot);
+  sel.addEventListener("change", () => { M._sim_goto(+sel.value); draw(); });
+
+  let inverted = false;
+  document.getElementById("invert").addEventListener("click", () => {
+    inverted = !inverted; M._sim_set_invert(inverted ? 1 : 0); draw();
+  });
+
+  const KEYMAP = {
+    ArrowUp: 85, ArrowDown: 68, ArrowLeft: 76, ArrowRight: 82,
+    Enter: 69, " ": 69, Backspace: 66, Escape: 66,
+  };
+  window.addEventListener("keydown", (e) => {
+    const k = KEYMAP[e.key];
+    if (k !== undefined) { e.preventDefault(); key(k); }
+  });
+});
+</script>
+</body>
+</html>

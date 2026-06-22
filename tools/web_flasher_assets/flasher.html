@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>$project_name</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"] },
+            colors: {
+              border: "hsl(var(--border))",
+              input: "hsl(var(--input))",
+              ring: "hsl(var(--ring))",
+              background: "hsl(var(--background))",
+              foreground: "hsl(var(--foreground))",
+              primary: { DEFAULT: "hsl(var(--primary))", foreground: "hsl(var(--primary-foreground))" },
+              secondary: { DEFAULT: "hsl(var(--secondary))", foreground: "hsl(var(--secondary-foreground))" },
+              muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },
+              accent: { DEFAULT: "hsl(var(--accent))", foreground: "hsl(var(--accent-foreground))" },
+              card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--card-foreground))" }
+            },
+            borderRadius: {
+              lg: "var(--radius)",
+              md: "calc(var(--radius) - 2px)",
+              sm: "calc(var(--radius) - 4px)"
+            }
+          }
+        }
+      };
+    </script>
+    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+    <script type="module" src="nrf52-dfu.js"></script>
+    <style>
+      /* shadcn/ui "neutral" base color — light theme tokens */
+      :root {
+        --background: 0 0% 100%;
+        --foreground: 0 0% 3.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 0 0% 3.9%;
+        --primary: 0 0% 9%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 0 0% 96.1%;
+        --secondary-foreground: 0 0% 9%;
+        --muted: 0 0% 96.1%;
+        --muted-foreground: 0 0% 45.1%;
+        --accent: 0 0% 96.1%;
+        --accent-foreground: 0 0% 9%;
+        --border: 0 0% 89.8%;
+        --input: 0 0% 89.8%;
+        --ring: 0 0% 3.9%;
+        --radius: 0.5rem;
+
+        --esp-tools-button-color: hsl(var(--primary));
+        --esp-tools-button-text-color: hsl(var(--primary-foreground));
+        --esp-tools-button-border-radius: calc(var(--radius) - 2px);
+      }
+
+      body { color-scheme: light; font-family: "Inter", ui-sans-serif, system-ui, sans-serif; }
+
+      esp-web-install-button::part(button) {
+        font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+        font-weight: 500;
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+        line-height: 1.5rem;
+      }
+
+      /* screen gallery — all slides stacked in one grid cell, cross-faded.
+         The stage width is capped per-device so renders show roughly
+         device-sized instead of stretching to the full column. */
+      .gallery { display: flex; flex-direction: column; gap: 0.75rem; }
+      .slideshow { display: grid; width: 100%; }
+      .slideshow > .slide { grid-area: 1 / 1; width: 100%; opacity: 0; transition: opacity .6s ease; }
+      .slideshow > .slide.is-active { opacity: 1; }
+      .pixelated { image-rendering: pixelated; }
+
+      /* native <progress> styled as a shadcn Progress bar */
+      progress.ui-progress { -webkit-appearance: none; appearance: none; border: 0; }
+      progress.ui-progress::-webkit-progress-bar { background: hsl(var(--secondary)); border-radius: 9999px; }
+      progress.ui-progress::-webkit-progress-value { background: hsl(var(--primary)); border-radius: 9999px; }
+      progress.ui-progress::-moz-progress-bar { background: hsl(var(--primary)); border-radius: 9999px; }
+    </style>
+  </head>
+  <body class="min-h-screen bg-background text-foreground antialiased">
+    <main class="mx-auto w-[min(48rem,calc(100vw-2rem))] space-y-8 py-12 max-sm:py-8">
+      <header class="space-y-2">
+        <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">$project_name</h1>
+        <p class="text-muted-foreground">Pick your device, then flash it from the browser. <a class="font-medium text-primary underline-offset-4 hover:underline" href="$repo_url">Repository</a></p>
+      </header>
+      <div class="space-y-4">
+$tablist
+$panels
+      </div>
+      <div class="rounded-md border bg-muted/40 p-4 text-sm leading-6 text-muted-foreground">
+        <p>Use a USB data cable and Chrome or Edge on desktop. ESP32 boards (T5 ePaper, T-Deck) flash in-browser over Web Serial with ESP Web Tools; the nRF52 Wio Tracker L1 flashes over Web Serial too — double-tap RESET into the bootloader first, or fall back to copying its UF2 onto the bootloader drive.</p>
+        <ol class="mt-2 list-decimal space-y-1 pl-5">
+          <li>Put the board in bootloader mode if the browser cannot detect it.</li>
+          <li>Choose erase when you want a clean install (ESP32 Web Serial only).</li>
+        </ol>
+      </div>
+    </main>
+    <script>
+      (function () {
+        var tabs = document.querySelectorAll("[data-tab]");
+        var panels = document.querySelectorAll("[data-panel]");
+        function activate(slug) {
+          tabs.forEach(function (t) {
+            t.setAttribute("data-state", t.dataset.tab === slug ? "active" : "inactive");
+          });
+          panels.forEach(function (p) { p.hidden = p.dataset.panel !== slug; });
+        }
+        tabs.forEach(function (t) {
+          t.addEventListener("click", function () { activate(t.dataset.tab); });
+        });
+      })();
+
+      // Screen galleries: auto-advance every 3s, but let the user switch
+      // manually with the chips below the stage (which stops auto-advance).
+      (function () {
+        document.querySelectorAll("[data-gallery]").forEach(function (box) {
+          var slides = box.querySelectorAll(".slide");
+          var chips = box.querySelectorAll("[data-go]");
+          var nameEl = box.querySelector("[data-caption-name]");
+          var descEl = box.querySelector("[data-caption-desc]");
+          var captions = [];
+          try { captions = JSON.parse(box.getAttribute("data-captions") || "[]"); } catch (e) {}
+          if (!slides.length) return;
+          var i = 0;
+          var timer = null;
+          function show(n) {
+            slides[i].classList.remove("is-active");
+            chips[i] && chips[i].setAttribute("data-state", "inactive");
+            i = (n + slides.length) % slides.length;
+            slides[i].classList.add("is-active");
+            chips[i] && chips[i].setAttribute("data-state", "active");
+            if (captions[i]) {
+              if (nameEl) nameEl.textContent = captions[i].name;
+              if (descEl) descEl.textContent = captions[i].desc;
+            }
+          }
+          chips.forEach(function (chip) {
+            chip.addEventListener("click", function () {
+              if (timer) { clearInterval(timer); timer = null; }
+              show(parseInt(chip.getAttribute("data-go"), 10) || 0);
+            });
+          });
+          if (slides.length > 1) {
+            timer = setInterval(function () { show(i + 1); }, 3000);
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

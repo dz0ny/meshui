@@ -1,0 +1,113 @@
+
+            <div class="space-y-3 rounded-md border bg-muted/30 p-4">
+              <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Live preview</p>
+              <p class="text-xs text-muted-foreground">The real mono UI running in your browser (WebAssembly) on mock data — navigate it with the joystick or arrow keys before you flash.</p>
+              <div id="simpv" class="flex flex-col items-center gap-3">
+                <style>
+                  #simpv canvas { image-rendering: pixelated; background:#fff; border:1px solid hsl(var(--border)); border-radius:4px; }
+                  #simpv .dpad { display:grid; grid-template-columns:repeat(3,40px); grid-template-rows:repeat(3,40px); gap:4px; }
+                  #simpv .dpad button { padding:0; font-size:15px; }
+                  #simpv .dpad .u{grid-area:1/2} #simpv .dpad .l{grid-area:2/1} #simpv .dpad .e{grid-area:2/2}
+                  #simpv .dpad .r{grid-area:2/3} #simpv .dpad .d{grid-area:3/2} #simpv .dpad .b{grid-area:1/3}
+                  #simpv .ctl { display:inline-flex; align-items:center; justify-content:center; white-space:nowrap;
+                    border:1px solid hsl(var(--border)); border-radius:6px; padding:5px 10px; font-size:12px; font-weight:500;
+                    background:hsl(var(--background)); color:hsl(var(--foreground)); cursor:pointer; }
+                  #simpv .ctl:hover { background:hsl(var(--muted)); }
+                  #simpv select.ctl { cursor:pointer; }
+                </style>
+                <div class="flex flex-wrap items-center justify-center gap-2">
+                  <select id="simpv-goto" class="ctl"></select>
+                  <select id="simpv-lang" class="ctl"><option value="0">EN</option><option value="1">SL</option></select>
+                  <button id="simpv-invert" class="ctl" type="button">Dark mode</button>
+                  <button id="simpv-reset" class="ctl" type="button">Reset</button>
+                </div>
+                <canvas id="simpv-screen"></canvas>
+                <div class="dpad">
+                  <button class="ctl u" data-key="85">&#9650;</button>
+                  <button class="ctl l" data-key="76">&#9664;</button>
+                  <button class="ctl e" data-key="69">&#9679;</button>
+                  <button class="ctl r" data-key="82">&#9654;</button>
+                  <button class="ctl d" data-key="68">&#9660;</button>
+                  <button class="ctl b" data-key="66">&#10554;</button>
+                </div>
+                <p id="simpv-status" class="text-xs text-muted-foreground">Loading preview…</p>
+              </div>
+            </div>
+<script src="sim.js"></script>
+<script>
+(function () {
+  var SCREENS = [
+    [31,"Dashboard"],[0,"Home menu"],[2,"Messages"],[26,"Quick reply"],[29,"Team"],
+    [25,"Trail"],[35,"Waypoints"],[36,"Waypoint detail"],[27,"Compass"],[3,"Settings"],
+    [9,"GPS settings"],[10,"Mesh settings"],[8,"Display"],[30,"Sound"],[28,"Privacy"],
+    [15,"Bluetooth"],[5,"Battery"],[7,"Status"],[4,"GPS info"],[6,"Mesh info"],[32,"Provision"]
+  ];
+  if (typeof SimModule !== "function") {
+    var s = document.getElementById("simpv-status");
+    if (s) s.textContent = "Preview unavailable (sim.js failed to load).";
+    return;
+  }
+  var canvas = document.getElementById("simpv-screen");
+  var ctx = canvas.getContext("2d");
+  var M, inverted = false;
+
+  function draw() {
+    var w = M._sim_w(), h = M._sim_h(), ptr = M._sim_pixels();
+    var gray = M.HEAPU8.subarray(ptr, ptr + w * h);
+    var img = ctx.createImageData(w, h);
+    for (var i = 0; i < w * h; i++) {
+      var v = gray[i];
+      img.data[i*4]=v; img.data[i*4+1]=v; img.data[i*4+2]=v; img.data[i*4+3]=255;
+    }
+    var off = document.createElement("canvas");
+    off.width = w; off.height = h;
+    off.getContext("2d").putImageData(img, 0, 0);
+    var scale = 2;                       // Wio 250x122 mono panel, doubled
+    canvas.width = w * scale; canvas.height = h * scale;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+  }
+  function boot() {
+    var lang = +document.getElementById("simpv-lang").value;
+    M._sim_boot(0, lang);                // target 0 = Wio panel
+    inverted = false;
+    document.getElementById("simpv-invert").textContent = "Dark mode";
+    draw();
+  }
+  function key(k) { M._sim_key(k); draw(); }
+
+  SimModule().then(function (mod) {
+    M = mod;
+    var sel = document.getElementById("simpv-goto");
+    SCREENS.forEach(function (row) {
+      var o = document.createElement("option");
+      o.value = row[0]; o.textContent = row[1]; sel.appendChild(o);
+    });
+    document.getElementById("simpv-status").textContent = "";
+    boot();
+    setInterval(function () { M._sim_tick(250); draw(); }, 250);
+
+    Array.prototype.forEach.call(document.querySelectorAll("#simpv .dpad button"), function (b) {
+      b.addEventListener("click", function () { key(+b.dataset.key); });
+    });
+    document.getElementById("simpv-lang").addEventListener("change", boot);
+    document.getElementById("simpv-reset").addEventListener("click", boot);
+    sel.addEventListener("change", function () { M._sim_goto(+sel.value); draw(); });
+    document.getElementById("simpv-invert").addEventListener("click", function (e) {
+      inverted = !inverted; M._sim_set_invert(inverted ? 1 : 0);
+      e.currentTarget.textContent = inverted ? "Light mode" : "Dark mode"; draw();
+    });
+
+    var KEYMAP = {ArrowUp:85,ArrowDown:68,ArrowLeft:76,ArrowRight:82,Enter:69," ":69,Backspace:66,Escape:66};
+    // Only steer the preview when the Wio panel is the visible/active tab.
+    window.addEventListener("keydown", function (e) {
+      var panel = document.querySelector('[data-panel="wio-tracker-l1"]');
+      if (!panel || panel.hasAttribute("hidden")) return;
+      var k = KEYMAP[e.key];
+      if (k !== undefined) { e.preventDefault(); key(k); }
+    });
+  }).catch(function (err) {
+    document.getElementById("simpv-status").textContent = "Preview failed: " + err;
+  });
+})();
+</script>
