@@ -60,7 +60,18 @@ TARGETS = [
         "description": "The Wio Tracker L1 is an nRF52840 mono e-ink tracker. Double-tap RESET to enter the bootloader, then flash it straight from Chrome or Edge over Web Serial — no toolchain or drag-and-drop required. A UF2 download is provided as a fallback.",
         "product_url": None,
         "product_image": None,
-        "screenshots": [],
+        # Rendered by the native UI simulator (see tools/gen_wio_shots.sh). 1-bit
+        # e-ink renders, so the slideshow shows them pixel-crisp (no smoothing).
+        "pixelated": True,
+        "screenshots": [
+            ("wio-chat.png", "Messages"),
+            ("wio-team.png", "Team"),
+            ("wio-waypoints.png", "Waypoints"),
+            ("wio-gps.png", "GPS status"),
+            ("wio-compass.png", "Compass"),
+            ("wio-settings.png", "Settings"),
+            ("wio-keyboard.png", "On-screen keyboard"),
+        ],
     },
 ]
 
@@ -143,14 +154,16 @@ def build_target_panel(target: dict, version: str, active: bool) -> str:
 
     screenshots_html = ""
     if target.get("screenshots"):
+        pix = " pixelated" if target.get("pixelated") else ""
         imgs = "\n".join(
-            f'                <img src="{slug}/{html.escape(name)}" alt="{html.escape(alt)}" class="w-full rounded-md border object-cover" />'
-            for name, alt in target["screenshots"]
+            f'                <img src="{slug}/{html.escape(name)}" alt="{html.escape(alt)}"'
+            f' class="slide w-full rounded-md border object-contain{pix}{" is-active" if i == 0 else ""}" />'
+            for i, (name, alt) in enumerate(target["screenshots"])
         )
         screenshots_html = f"""
             <div class="space-y-3 rounded-md border bg-muted/30 p-4">
               <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Screens</p>
-              <div class="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+              <div class="slideshow" data-slideshow>
 {imgs}
               </div>
             </div>"""
@@ -331,6 +344,12 @@ def build_page(version: str, repo_url: str) -> str:
         line-height: 1.5rem;
       }}
 
+      /* screen slideshow — all slides stacked in one grid cell, cross-faded */
+      .slideshow {{ display: grid; }}
+      .slideshow > .slide {{ grid-area: 1 / 1; opacity: 0; transition: opacity .6s ease; }}
+      .slideshow > .slide.is-active {{ opacity: 1; }}
+      .pixelated {{ image-rendering: pixelated; }}
+
       /* native <progress> styled as a shadcn Progress bar */
       progress.ui-progress {{ -webkit-appearance: none; appearance: none; border: 0; }}
       progress.ui-progress::-webkit-progress-bar {{ background: hsl(var(--secondary)); border-radius: 9999px; }}
@@ -368,6 +387,20 @@ def build_page(version: str, repo_url: str) -> str:
         }}
         tabs.forEach(function (t) {{
           t.addEventListener("click", function () {{ activate(t.dataset.tab); }});
+        }});
+      }})();
+
+      // Auto-rotating screen slideshows: one slide visible, advance every 3s.
+      (function () {{
+        document.querySelectorAll("[data-slideshow]").forEach(function (box) {{
+          var slides = box.querySelectorAll(".slide");
+          if (slides.length < 2) return;
+          var i = 0;
+          setInterval(function () {{
+            slides[i].classList.remove("is-active");
+            i = (i + 1) % slides.length;
+            slides[i].classList.add("is-active");
+          }}, 3000);
         }});
       }})();
     </script>
