@@ -91,7 +91,7 @@ static void build_home() {
 struct Entry { const char* name; screen_lifecycle_t* life; void (*pre)(); void (*build)(); };
 #define S(ns) { #ns, &ui::screen::ns::lifecycle, nullptr, nullptr }
 static void pre_waypoint_detail() { ui::screen::waypoint_detail::set_index(0); }
-static void pre_compass() { ui::screen::compass::set_target_pos("Koca", 46070000, 14520000); }
+static void pre_compass() { ui::screen::compass::set_target_pos("Hut", 46070000, 14520000); }
 static const Entry SCREENS[] = {
     { "home", nullptr, nullptr, build_home },
     S(chat), S(quick_reply), S(status), S(settings), S(gps), S(mesh_settings),
@@ -121,7 +121,7 @@ static void render_screen(const Entry& e) {
     }
     if (!e.life) {                       // keyboard demo: empty screen + modal
         mono::go(build_empty);
-        ui::kit::keyboard_open("Pozdravljen", 150, nullptr, nullptr);
+        ui::kit::keyboard_open("Hello", 150, nullptr, nullptr);
         return;
     }
     g_life = e.life;

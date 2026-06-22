@@ -26,7 +26,8 @@ namespace ui::screen::trail {
 using namespace ui::kit;
 
 static Handle cv = nullptr;          // map canvas
-static Handle stats_label = nullptr;
+static Handle stats_status = nullptr; // small: status + avg speed
+static Handle stats_big = nullptr;    // large: distance + time (the headline)
 static Handle empty_label = nullptr;
 static Handle btn_toggle = nullptr;
 static Timer  update_timer = nullptr;
@@ -42,7 +43,7 @@ static void fmt_dist(char* buf, size_t n, uint32_t meters) {
 }
 
 static void update_stats() {
-    if (!stats_label) return;
+    if (!stats_big) return;
     auto& t = model::trail;
 
     const char* status = !t.isActive() ? i18n::t(i18n::T_STOPPED)
@@ -58,8 +59,9 @@ static void update_stats() {
     else           snprintf(tbuf, sizeof(tbuf), "%lu:%02lu",
                             (unsigned long)(es / 3600), (unsigned long)((es % 3600) / 60));
 
-    set_textf(stats_label, "%s\nPts %d/%d\nDist %s\nTime %s\nAvg %u km/h",
-              status, t.count(), TrailStore::CAPACITY, dist, tbuf, (unsigned)t.avgSpeedKmh());
+    // Small context line, then the two headline numbers big and side by side.
+    if (stats_status) set_textf(stats_status, "%s  \xC2\xB7  %u km/h", status, (unsigned)t.avgSpeedKmh());
+    set_textf(stats_big, "%s   %s", dist, tbuf);
 }
 
 static void update_toggle_label() {
@@ -203,19 +205,30 @@ static void update_cb(void*) {
 static void create(Handle parent) {
     Handle content = content_area(parent);
     free_layout(content);   // children below are placed by pos()/align(), not stacked
-    // No border around the map — the canvas fills the content area, so the frame
-    // is pure decoration and the edge pixels are better spent on the map itself.
+    grow(content, 1);       // fill the viewport (free containers otherwise collapse
+                            // to their tallest child, dropping the bottom rows)
 
     int w = px_width(content), h = px_height(content);
-    cv = canvas(content, w, h);
-    size(cv, pct(100), pct(100));
+
+    // Vertical bands, top to bottom: map, small status line, the two big headline
+    // numbers (distance + time), then the action buttons. Everything is placed by
+    // absolute pos() so the stacking is explicit and the bigger font fits.
+    int map_h    = h * 40 / 100;
+    int status_y = map_h + 2;
+    int big_y    = status_y + h * 11 / 100;     // below the small status line
+    int btn_y    = h - UI_MAP_BTN_H - 4;        // pinned just above the bottom edge
+
+    cv = canvas(content, w, map_h);
+    size(cv, w, map_h);
     pos(cv, 0, 0);
 
-    stats_label = label(content, "");
-    font(stats_label, Font::Small);
-    card(stats_label);
-    pad(stats_label, 3);
-    pos(stats_label, 5, 5);
+    stats_status = label(content, "");
+    font(stats_status, Font::Small);
+    pos(stats_status, 6, status_y);
+
+    stats_big = label(content, "");
+    font(stats_big, Font::Title);
+    pos(stats_big, 6, big_y);
 
     empty_label = label(content, i18n::t(i18n::T_NO_GPS_TRAIL));
     font(empty_label, Font::Body);
@@ -227,11 +240,11 @@ static void create(Handle parent) {
 
     btn_toggle = button(content, i18n::t(i18n::T_START), on_toggle, nullptr);
     size(btn_toggle, UI_MAP_BTN_W, UI_MAP_BTN_H);
-    align(btn_toggle, Align::BottomLeft, 6, -6);
+    pos(btn_toggle, 6, btn_y);
 
     Handle btn_clear = button(content, i18n::t(i18n::T_CLEAR), on_clear, nullptr);
     size(btn_clear, UI_MAP_BTN_W, UI_MAP_BTN_H);
-    align(btn_clear, Align::BottomRight, -6, -6);
+    pos(btn_clear, w - UI_MAP_BTN_W - 6, btn_y);
 
     update_toggle_label();
     update_stats();
@@ -251,7 +264,8 @@ static void exit_fn() {
 
 static void destroy() {
     cv = nullptr;
-    stats_label = nullptr;
+    stats_status = nullptr;
+    stats_big = nullptr;
     empty_label = nullptr;
     btn_toggle = nullptr;
 }

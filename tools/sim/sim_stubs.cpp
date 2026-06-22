@@ -42,10 +42,10 @@ namespace model {
     void update_battery() {}
 
     void sim_seed() {
-        // Default to Slovenian so the sim exercises the Lemon font's diacritics;
-        // override with SIM_LANG=en.
+        // Default to English; set SIM_LANG=sl to exercise the Lemon font's
+        // Slovenian diacritics.
         const char* lang = getenv("SIM_LANG");
-        i18n::set_lang(lang && lang[0] == 'e' ? i18n::EN : i18n::SL);
+        i18n::set_lang(lang && lang[0] == 's' ? i18n::SL : i18n::EN);
 
         clock.hour = 10; clock.minute = 54;
         gps.has_fix = true; gps.satellites = 9;
@@ -81,13 +81,18 @@ namespace model {
             m.is_self = self;
             m.channel_idx = 0;
         };
-        add("Ana \xF0\x9F\x9A\x80", "Sem na poti, pridem cez 10 minut.", false);   // emoji in sender name
+        add("Ana \xF0\x9F\x9A\x80", "On my way, there in 10 minutes.", false);   // emoji in sender name
         add("me",   "OK", true);
-        add("Bojan","Najdemo se pri koci na vrhu?", false);
-        add("me",   "Ja, super. Vidimo se tam.", true);
+        add("Bojan","Meet at the hut on top?", false);
+        add("me",   "Yes, great. See you there.", true);
 
-        waypoints.add(46123456, 14987654, 0, "Koca");
-        waypoints.add(46200000, 15000000, 0, "Izvir");
+        waypoints.add(46123456, 14987654, 0, "Hut");
+        waypoints.add(46200000, 15000000, 0, "Spring");
+
+        // A recorded trail (~1.2 km) so the Trail screen shows real numbers.
+        trail.setActive(true);
+        int32_t la = 46050000, lo = 14500000;
+        for (int i = 0; i < 12; i++) { trail.addPoint(la, lo, epoch_now + i * 60, 5); la += 1000; lo += 500; }
     }
 }
 
