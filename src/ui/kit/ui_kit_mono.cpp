@@ -471,9 +471,11 @@ static void layout(Node* n, int ox, int oy, int avail_w, int avail_h) {
         int cy = inner_y;
         for (Node* c = n->first_child; c; c = c->next_sib) {
             if (c->hidden) continue;
-            int ch = (c->growf > 0 && grow_total > 0)
-                       ? (extra * c->growf) / grow_total
-                       : measure_h(c, inner_w);
+            int ch = measure_h(c, inner_w);
+            if (c->growf > 0 && grow_total > 0) {
+                int grown = (extra * c->growf) / grow_total;
+                if (grown > ch) ch = grown;   // grow fills slack but never clips content
+            }
             layout(c, inner_x, cy, inner_w, ch);
             cy += ch + n->gap;
         }
@@ -897,19 +899,29 @@ void feed_key(char key) {
     Node* foc[POOL]; int cnt = 0;
     collect_focusables(g_root, foc, cnt, POOL);
 
-    if (cnt == 0) {
-        // No focusable rows (read-only screen) — page-scroll the content.
+    // Page-scroll the whole screen by half a viewport. Used when U/D shouldn't
+    // move a focus cursor: read-only screens (cnt==0) and screens with a single
+    // action button below a taller list (e.g. chat's Reply) — there the lone
+    // focusable can't cycle, so U/D scrolls the history instead.
+    auto page_scroll = [&](char k) {
         int vp = display.height() - header_h();   // viewport below the status bar
         int total = content_bottom(g_root);
         int maxscroll = total - vp; if (maxscroll < 0) maxscroll = 0;
         if (maxscroll == 0) return;             // everything fits
         int step = vp / 2;
-        if (key == 'U') g_scroll -= step;
-        else if (key == 'D') g_scroll += step;
-        else return;
+        if (k == 'U') g_scroll -= step;
+        else            g_scroll += step;
         if (g_scroll < 0) g_scroll = 0;
         if (g_scroll > maxscroll) g_scroll = maxscroll;
         g_dirty = true; render();
+    };
+
+    if (cnt <= 1) {
+        if (key == 'U' || key == 'D') page_scroll(key);
+        else if (key == '\r' || key == 'E') {
+            Node* f = (cnt == 1) ? foc[0] : nullptr;   // the single action, if any
+            if (f) { g_focus = f; if (f->cb) f->cb(f->user); render(); }
+        }
         return;
     }
     int idx = 0;

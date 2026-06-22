@@ -36,48 +36,12 @@ static bool msg_visible(const model::StoredMessage& m) {
 static bool msg_visible(const model::StoredMessage&) { return true; }
 #endif
 
-void process_events() {
-    if (!msg_container) return;
-
-    // Rebuild if a message was deleted (indices shifted).
-    if (last_displayed > model::message_count) {
-        msg_clear(msg_container);
-        for (int i = 0; i < model::message_count; i++) {
-            auto& msg = model::messages[i];
-            if (!msg_visible(msg)) continue;
-            msg_append(msg_container, msg.sender, msg.text, msg.is_self, i);
-        }
-        last_displayed = model::message_count;
-        msg_scroll_bottom(msg_container);
-        focus_refresh();
-        return;
-    }
-
-    bool changed = false;
-    while (last_displayed < model::message_count) {
-        auto& msg = model::messages[last_displayed];
-        if (msg_visible(msg)) {
-            msg_append(msg_container, msg.sender, msg.text, msg.is_self, last_displayed);
-            changed = true;
-        }
-        last_displayed++;
-    }
-    if (changed) {
-        msg_scroll_bottom(msg_container);
-        focus_refresh();
-    }
-}
-
-static void create(Handle parent) {
-#ifdef BOARD_WIO_L1
-    active_channel = mesh::task::get_msg_channel();
-#endif
-
-    msg_container = msglist(parent);
-    size(msg_container, pct(100), pct(100));
-#ifdef BOARD_WIO_L1
-    grow(msg_container, 1);   // fill the space between the header and Reply button
-#endif
+// Build (or rebuild) all message rows into msg_container. On the button-driven
+// Wio the newest message goes on TOP, so opening Messages shows the latest info
+// without scrolling down; touch builds keep the conventional newest-at-bottom
+// order and auto-scroll to it.
+static void populate() {
+    msg_clear(msg_container);
 
     int visible = 0;
     for (int i = 0; i < model::message_count; i++) {
@@ -93,14 +57,39 @@ static void create(Handle parent) {
         font(empty, Font::Title);
         text_center(empty);
     } else {
-        for (int i = 0; i < model::message_count; i++) {
+#ifdef BOARD_WIO_L1
+        for (int i = model::message_count - 1; i >= 0; i--) {   // newest first → top
+#else
+        for (int i = 0; i < model::message_count; i++) {        // oldest first → newest at bottom
+#endif
             auto& msg = model::messages[i];
             if (!msg_visible(msg)) continue;
             msg_append(msg_container, msg.sender, msg.text, msg.is_self, i);
         }
-        msg_scroll_bottom(msg_container);
+        msg_scroll_bottom(msg_container);   // touch: jump to newest; mono: no-op (top is newest)
     }
     last_displayed = model::message_count;
+}
+
+void process_events() {
+    if (!msg_container) return;
+    if (last_displayed == model::message_count) return;   // count unchanged → nothing to redraw
+    populate();                                           // add/delete both reorder → full rebuild
+    focus_refresh();
+}
+
+static void create(Handle parent) {
+#ifdef BOARD_WIO_L1
+    active_channel = mesh::task::get_msg_channel();
+#endif
+
+    msg_container = msglist(parent);
+    size(msg_container, pct(100), pct(100));
+#ifdef BOARD_WIO_L1
+    grow(msg_container, 1);   // fill the space between the header and Reply button
+#endif
+
+    populate();
 
 #ifdef BOARD_WIO_L1
     // Keyboard-less reply: a focusable button that opens the quick-reply menu.

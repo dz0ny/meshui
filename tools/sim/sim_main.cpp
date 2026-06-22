@@ -224,6 +224,11 @@ int main(int argc, char** argv) {
 
     render_screen(*sel);        // reset + build tree + render to the buffer
 
+    // SIM_KEYS feeds a sequence of button presses after the build so we can
+    // exercise focus/scroll: 'U'/'D' move, 'E' activate, 'B' back.
+    if (const char* keys = getenv("SIM_KEYS"))
+        for (const char* k = keys; *k; k++) mono::feed_key(*k);
+
     if (!display.savePng(out)) { fprintf(stderr, "failed to write %s\n", out); return 1; }
     printf("wrote %s (%dx%d) for screen '%s'\n", out, display.width(), display.height(), which);
     return 0;
