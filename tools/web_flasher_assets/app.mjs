@@ -579,6 +579,36 @@ function Panel({ target, active }) {
   </div>`;
 }
 
+// Firmware highlights, rendered once above the device tabs. A per-feature note
+// (e.g. "Wio Tracker L1") flags anything that isn't on every build.
+function Features({ items }) {
+  if (!items || !items.length) return null;
+  return html`<section
+    class="rounded-lg border bg-card text-card-foreground shadow-sm"
+  >
+    <div class="flex flex-col space-y-1.5 p-6 pb-3">
+      <h2 class="text-lg font-semibold leading-none tracking-tight">
+        Firmware highlights
+      </h2>
+    </div>
+    <div class="grid gap-4 p-6 pt-0 sm:grid-cols-2">
+      ${items.map(
+        (f) => html`<div key=${f.title} class="space-y-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <h3 class="text-sm font-semibold text-foreground">${f.title}</h3>
+            ${f.note &&
+            html`<span
+              class="inline-flex items-center rounded-md border border-transparent bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground"
+              >${f.note}</span
+            >`}
+          </div>
+          <p class="text-sm text-muted-foreground">${f.desc}</p>
+        </div>`
+      )}
+    </div>
+  </section>`;
+}
+
 function App() {
   const targets = cfg.targets || [];
   const [activeSlug, setActiveSlug] = useState(
@@ -600,6 +630,7 @@ function App() {
         >
       </p>
     </header>
+    <${Features} items=${cfg.features} />
     <div class="space-y-4">
       <div
         role="tablist"

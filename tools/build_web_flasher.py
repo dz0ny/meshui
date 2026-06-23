@@ -96,6 +96,35 @@ TARGETS = [
 
 PROJECT_NAME = "MeshCore PaperUI Flasher"
 
+# Firmware highlights shown once at the top of the page. Each entry is
+# (title, description, note) — note flags a device-specific feature, "" if it
+# applies to every build.
+FEATURES = [
+    (
+        "Share waypoints",
+        "Drop a pin and send it over the mesh as a meter-precise location (way:/geo:). "
+        "Tap a received point to navigate to it or save it to your waypoints.",
+        "",
+    ),
+    (
+        "Fast GPS updates",
+        "Position refreshes quickly for responsive distance, bearing, compass, "
+        "and live trail tracking.",
+        "",
+    ),
+    (
+        "Single-channel display",
+        "Messages focus on one mesh channel at a time for a clean, readable view on e-ink.",
+        "",
+    ),
+    (
+        "Clone device settings",
+        "Copy one device's channels, contacts, and preferences onto another over BLE — "
+        "Share on the source, Receive on the target. Your identity stays put.",
+        "Wio Tracker L1",
+    ),
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -189,6 +218,10 @@ def build_page(version: str, repo_url: str) -> str:
         "projectName": PROJECT_NAME,
         "repoUrl": repo_url,
         "version": version,
+        "features": [
+            {"title": title, "desc": desc, "note": note}
+            for (title, desc, note) in FEATURES
+        ],
         "targets": [build_target_config(t, version) for t in TARGETS],
     }
     # Embed as JSON in a <script>; </ is escaped so the literal can't close the tag.
