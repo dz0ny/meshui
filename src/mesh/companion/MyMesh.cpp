@@ -750,15 +750,28 @@ void MyMesh::onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *
     pu.lon_e6 = lon_e6;
     pu.timestamp = getRTCClock()->getCurrentTime();
     pu.speed_kmh = speed_kmh;
-    ContactsIterator iter;
-    ContactInfo ci;
-    while (iter.hasNext(this, ci)) {
-      if (memcmp(ci.id.pub_key, key_prefix, 6) == 0) {
-        strncpy(pu.name, ci.name, sizeof(pu.name) - 1);
-        break;
+    // Resolve the sender to a known contact (6-byte prefix match). Reused below
+    // to fold the fresh fix back onto that contact's record.
+    ContactInfo *known = lookupContactByPubKey(key_prefix, 6);
+    if (known) strncpy(pu.name, known->name, sizeof(pu.name) - 1);
+    mesh::bridge::push_position(pu);
+
+    // Treat the beacon like a mini-advert for that known contact: fold the fresh
+    // position onto its record so the saved contact — the e-paper card, the
+    // persisted store, and the BLE companion app — all reflect where the node is
+    // now, not where it was when it last sent a full advert. Unknown senders are
+    // left out; they only populate the live map layer pushed above.
+    if (known && (known->gps_lat != lat_e6 || known->gps_lon != lon_e6)) {
+      known->gps_lat = lat_e6;
+      known->gps_lon = lon_e6;
+      known->lastmod = getRTCClock()->getCurrentTime();              // our clock; bumps the app's contact sync
+      dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY); // lazy-persist to storage
+      if (_serial->isConnected()) {                                  // nudge the app to re-pull the moved contact
+        out_frame[0] = PUSH_CODE_ADVERT;
+        memcpy(&out_frame[1], known->id.pub_key, PUB_KEY_SIZE);
+        _serial->writeFrame(out_frame, 1 + PUB_KEY_SIZE);
       }
     }
-    mesh::bridge::push_position(pu);
 
     // Geographic repeat suppression: if the sender is within
     // NEARBY_DISTANCE_METERS of our own fix the beacon carries no new

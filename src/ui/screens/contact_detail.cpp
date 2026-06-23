@@ -37,6 +37,26 @@ static lv_obj_t* lbl_nav_action = NULL;
 #define SYMBOL_STAR_EMPTY    "\xE2\x98\x86" /* U+2606 ☆ */
 static const char* favorite_action_label(bool is_favorite) { return is_favorite ? SYMBOL_STAR_FILLED " Fav" : SYMBOL_STAR_EMPTY " Fav"; }
 
+// Live fast-GPS beacon position for a contact, matched by the first 6 pub-key
+// bytes. Same lookup the team/map screens use, so the card stays consistent.
+static const model::LivePosition* find_live(const uint8_t* pub_key) {
+    for (int i = 0; i < model::live_position_count; i++) {
+        const model::LivePosition& p = model::live_positions[i];
+        if (p.valid && memcmp(p.pub_key_prefix, pub_key, 6) == 0) return &p;
+    }
+    return nullptr;
+}
+
+// "now" / "5m" / "2h" / "3d" — relative to model::epoch_now. Empty if unknown.
+static void fmt_age(char* buf, size_t n, uint32_t ts) {
+    if (ts == 0 || model::epoch_now == 0 || model::epoch_now < ts) { buf[0] = 0; return; }
+    uint32_t s = model::epoch_now - ts;
+    if (s < 60)         snprintf(buf, n, "now");
+    else if (s < 3600)  snprintf(buf, n, "%lum", (unsigned long)(s / 60));
+    else if (s < 86400) snprintf(buf, n, "%luh", (unsigned long)(s / 3600));
+    else                snprintf(buf, n, "%lud", (unsigned long)(s / 86400));
+}
+
 static const char* contact_type_label(uint8_t type) {
     switch (type) {
         case ADV_TYPE_CHAT: return "Direct chat";
@@ -296,9 +316,17 @@ static void create(ui::kit::Handle parent_kit) {
     content_list = ui::nav::scroll_list(parent);
     lv_obj_set_style_pad_row(content_list, UI_MENU_ITEM_PAD, LV_PART_MAIN);
 
-    double c_lat = contact_lat / 1e6;
-    double c_lon = contact_lon / 1e6;
-    bool has_contact_gps = (contact_lat != 0 || contact_lon != 0);
+    // Prefer a fresh fast-GPS beacon for this node; fall back to the location
+    // carried in its advert (contact_lat/lon — left untouched in storage). The
+    // beacon is what the Map/compass track live, so the card should agree.
+    const model::LivePosition* live = has_pubkey ? find_live(contact_pubkey) : nullptr;
+    bool pos_is_live = live && (live->lat_e6 != 0 || live->lon_e6 != 0);
+    int32_t pos_lat = pos_is_live ? live->lat_e6 : contact_lat;
+    int32_t pos_lon = pos_is_live ? live->lon_e6 : contact_lon;
+
+    double c_lat = pos_lat / 1e6;
+    double c_lon = pos_lon / 1e6;
+    bool has_contact_gps = (pos_lat != 0 || pos_lon != 0);
     bool has_own_gps = model::gps.has_fix;
     const char* route_text = contact_has_path ? "Direct" : "Unknown";
     const char* type_text = contact_type_label(contact_type);
@@ -366,6 +394,11 @@ static void create(ui::kit::Handle parent_kit) {
 
     create_detail_row(details_card, "Location", coords_text);
     create_detail_row(details_card, "Distance", distance_text);
+    if (pos_is_live) {
+        char age_buf[16];
+        fmt_age(age_buf, sizeof(age_buf), live->timestamp);
+        create_detail_row(details_card, "Live fix", age_buf[0] ? age_buf : "now");
+    }
     if (has_pubkey) {
         char key_buf[32];
         snprintf(key_buf, sizeof(key_buf), "%02X%02X%02X%02X%02X%02X%02X",
