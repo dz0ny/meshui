@@ -1,5 +1,43 @@
-.pio
-.vscode
-.cachebro
+# PlatformIO / build
+.pio/
+.pioenvs/
+.piolibdeps/
+*.elf
+*.map
+
+# Generated web flasher output
+.github-pages/
+
+# Native UI simulator / WASM build artifacts
+tools/sim/build/
+tools/sim/web/*.js
+tools/sim/web/*.wasm
+tools/sim/web/*.data
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 compile_commands.json
+.cachebro
+
+# Python
 __pycache__/
+*.py[cod]
+.venv/
+venv/
+.uv/
+
+# OS junk
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# Logs / temp
+*.log
+*.tmp
