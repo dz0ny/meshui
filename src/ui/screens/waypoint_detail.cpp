@@ -43,7 +43,8 @@ static void on_send(void*) {
     if (!valid()) return;
     const Waypoint& w = model::waypoints.at(wp_idx);
     char msg[80];
-    snprintf(msg, sizeof(msg), "[WAY]%.6f,%.6f %s",
+    // 6 decimals (~0.1 m) keeps the share meter-precise; matches the geo: scheme.
+    snprintf(msg, sizeof(msg), "way:%.6f,%.6f %s",
              w.lat_1e6 / 1e6, w.lon_1e6 / 1e6, w.label);
 #ifdef BOARD_WIO_L1
     bool ok = mesh::task::send_channel(mesh::task::get_msg_channel(), msg);

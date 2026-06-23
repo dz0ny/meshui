@@ -30,10 +30,13 @@ inline double bearing(double lat1, double lon1, double lat2, double lon2) {
     return fmod(b + 360.0, 360.0);
 }
 
-// Parse a shared-location string out of a message body. Recognises:
+// Parse a shared-location string out of a message body. The way:/geo: scheme may
+// appear anywhere in the text (peers often prefix free text before the link).
+// Recognises:
 //   geo:LAT,LON              RFC-5870-ish — what the quick-reply "GPS location" sends
 //   geo:LAT,LON;u=NN         extra geo: params are ignored
-//   [WAY]LAT,LON Some label  MeshCore-Solo waypoint share (label optional)
+//   way:LAT,LON Some label   waypoint share (label optional)
+// Coordinates are sent at 6 decimals (~0.1 m), so parsing is meter-precise.
 // Returns true and fills lat/lon on success; if `label`/`label_n` are given, the
 // trailing free-text label (if any) is copied in. Coordinates are range-checked.
 inline bool parse_location(const char* text, double& lat, double& lon,
@@ -41,9 +44,12 @@ inline bool parse_location(const char* text, double& lat, double& lon,
     if (label && label_n) label[0] = 0;
     if (!text) return false;
 
-    const char* p = text;
-    if      (strncmp(p, "[WAY]", 5) == 0) p += 5;
-    else if (strncmp(p, "geo:",  4) == 0) p += 4;
+    // Scan for a scheme anywhere in the body; use whichever comes first.
+    const char* w = strstr(text, "way:");
+    const char* g = strstr(text, "geo:");
+    const char* p;
+    if      (w && (!g || w < g)) p = w + 4;
+    else if (g)                  p = g + 4;
     else return false;
 
     char* end = nullptr;

@@ -16,7 +16,7 @@
 #include "../components/geo_utils.h"
 
 // Single message + reply/delete actions — ported to the ui::kit facade. When the
-// body carries a shared location (geo:/[WAY]), Navigate and Save are offered too.
+// body carries a shared location (geo:/way:), Navigate and Save are offered too.
 
 namespace ui::screen::msg_detail {
 
