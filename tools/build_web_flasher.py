@@ -72,7 +72,7 @@ TARGETS = [
         "chip_label": CHIP_FAMILY,
         "description": "Flash the latest PlatformIO build for the LilyGo T5 ePaper S3 Pro directly from Chrome or Edge with ESP Web Tools. It works as both a standalone mesh device and a companion-connected MeshCore node.",
         "product_url": "https://lilygo.cc/en-us/products/t5-e-paper-s3-pro",
-        "product_image": "main.jpeg",
+        "product_image": None,
         # Portrait 540x960 e-paper renders — cap the stage so they show roughly
         # device-sized instead of stretching to the full column width.
         "screen_max_w": "17rem",
