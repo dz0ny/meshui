@@ -744,6 +744,10 @@ void MyMesh::onChannelDataRecv(const mesh::GroupChannel &channel, mesh::Packet *
     // friendly name from our contacts by matching the pub-key prefix; leave it
     // empty if unknown (the UI falls back to a hex label). The beacon carries no
     // timestamp — stamp our own RX time so "most recently heard" ordering works.
+    // Heard a peer's beacon on the fast-GPS channel — yield briefly before our
+    // own next send so two nodes that woke together don't collide.
+    _fast_gps_send_holdoff_until = futureMillis(FAST_GPS_CHANNEL_RX_HOLDOFF_MS);
+
     mesh::bridge::PositionUpdate pu = {};
     memcpy(pu.pub_key_prefix, key_prefix, 6);
     pu.lat_e6 = lat_e6;
@@ -2276,6 +2280,27 @@ void MyMesh::handleCmdFrame(size_t len) {
       snprintf(fast_gps_channel, sizeof(fast_gps_channel), "%d", configured_channel);
       appendCustomVar(dp, end, first, "fast_gps_channel", fast_gps_channel);
 
+      // Region scope for fast-GPS beacons (companion app picker). Expose the
+      // current index plus the ordered label list so the app renders exactly
+      // the regions this firmware supports. Index 0 is unscoped ("Unscoped").
+      char fast_gps_region_str[6];
+      snprintf(fast_gps_region_str, sizeof(fast_gps_region_str), "%u",
+               (unsigned)_prefs.fast_gps_region);
+      appendCustomVar(dp, end, first, "fast_gps_region", fast_gps_region_str);
+
+      char fast_gps_regions[96];
+      char *rp = fast_gps_regions;
+      char *rend = fast_gps_regions + sizeof(fast_gps_regions);
+      for (uint8_t r = 0; r < FAST_GPS_REGION_COUNT && rp < rend; r++) {
+        const char *label = (r == FAST_GPS_REGION_UNSCOPED) ? "Unscoped"
+                                                            : fastGpsRegionName(r);
+        int written = snprintf(rp, (size_t)(rend - rp), "%s%s",
+                               r == 0 ? "" : ",", label);
+        if (written <= 0) break;
+        rp += written;
+      }
+      appendCustomVar(dp, end, first, "fast_gps_regions", fast_gps_regions);
+
       LocationProvider *location = sensors.getLocationProvider();
       bool gps_fix = location != NULL && location->isValid();
       long gps_sats = location != NULL ? location->satellitesCount() : 0;
@@ -2333,7 +2358,8 @@ void MyMesh::handleCmdFrame(size_t len) {
       bool gps_supported = hasGpsCustomVars();
       bool is_gps_var = strcmp(sp, "gps") == 0 ||
                         strcmp(sp, "gps_interval") == 0 ||
-                        strcmp(sp, "fast_gps_channel") == 0;
+                        strcmp(sp, "fast_gps_channel") == 0 ||
+                        strcmp(sp, "fast_gps_region") == 0;
 #ifdef PIN_BUZZER
       bool buzzer_supported = true;
 #else
@@ -2368,6 +2394,14 @@ void MyMesh::handleCmdFrame(size_t len) {
           success = true;
         } else if (channel_idx > 0 && channel_idx < MAX_GROUP_CHANNELS) {
           _prefs.fast_gps_channel_idx = channel_idx;
+          resetFastGpsShareState();
+          savePrefs();
+          success = true;
+        }
+      } else if (strcmp(sp, "fast_gps_region") == 0) {
+        int region_idx = parseIntValue(np);
+        if (region_idx >= 0 && region_idx < FAST_GPS_REGION_COUNT) {
+          _prefs.fast_gps_region = (uint8_t)region_idx;
           resetFastGpsShareState();
           savePrefs();
           success = true;
